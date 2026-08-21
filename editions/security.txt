@@ -1,0 +1,29 @@
+# Z-Linux Security Edition (Hacking) - Package List
+# Packages for penetration testers, security researchers, and ethical hackers
+
+metasploit-framework
+burp-suite-community
+wireshark
+nmap
+hashcat
+aircrack-ng
+hydra
+sqlmap
+git
+vim
+curl
+wget
+htop
+python3
+python3-pip
+tcpdump
+socat
+netcat-openbsd
+ssl
+openssl
+gcc
+make
+autoconf
+gdb
+strace
+ltrace

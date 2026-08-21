@@ -1,0 +1,36 @@
+# Z-Linux Developer Edition (Default) - Package List
+# Packages for software developers and programmers
+
+build-essential
+git
+git-flow
+curl
+wget
+vim
+nano
+htop
+python3
+python3-pip
+python3-venv
+nodejs
+npm
+npm-check
+docker.io
+docker-compose
+vscode
+gitkraken
+gcc
+g++
+make
+autoconf
+autml
+cmake
+gradle
+maven
+java-11-openjdk
+openjdk-11-jdk-headless
+gdb
+strace
+valgrind
+fontconfig
+libfreetype6-dev

@@ -1,0 +1,27 @@
+# Z-Linux Documentation Edition (Office) - Package List
+# Packages for technical writers, documentation specialists, and office professionals
+
+libreoffice
+libreoffice-writer
+libreoffice-calc
+libreoffice-impress
+pandoc
+texlive
+texlive-latex-extra
+gimp
+inkscape
+sphinx-doc
+asciidoc
+git
+vim
+nano
+curl
+wget
+htop
+unzip
+zip
+python3
+python3-pip
+grammarly
+hunspell
+hunspell-en-us

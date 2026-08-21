@@ -1,0 +1,27 @@
+# Z-Linux Entertainment Edition (Editor) - Package List
+# Packages for content creators, video editors, and multimedia professionals
+
+blender
+ffmpeg
+kdenlive
+audacity
+gimp
+darktable
+obs-studio
+obs-plugins
+obs-plugin-source-clone
+ffmpeg-doc
+git
+vim
+curl
+wget
+htop
+python3
+python3-pip
+node-gyp
+libav-tools
+optipng
+pngquant
+imagemagick
+xclip
+xsel
