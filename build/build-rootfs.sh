@@ -38,17 +38,9 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-cleanup() {
-    rm -rf "$WORK_DIR/extract"
-}
-
-trap cleanup EXIT
-
 # ------------------------------------------------------------
 # Banner
 # ------------------------------------------------------------
-
-clear 2>/dev/null || true
 
 echo "========================================"
 echo "       Z-Linux RootFS Builder"
@@ -61,12 +53,12 @@ echo "[+] RootFS       : $ROOTFS_DIR"
 echo
 
 # ------------------------------------------------------------
-# Check required Termux commands
+# Dependencies
 # ------------------------------------------------------------
 
 echo "[+] Checking Termux dependencies..."
 
-for cmd in bash wget file tar proot; do
+for cmd in bash wget file proot; do
     if ! command_exists "$cmd"; then
         die "Missing command: $cmd
 
@@ -76,24 +68,23 @@ pkg install $cmd"
     fi
 done
 
-# bsdtar is useful for extracting Debian archives.
 if command_exists bsdtar; then
     ARCHIVER="bsdtar"
-elif command_exists ar; then
-    ARCHIVER="ar"
 else
-    die "Neither bsdtar nor ar is installed.
-
-Run:
+    if ! command_exists ar; then
+        die "Install bsdtar:
 
 pkg install bsdtar"
+    fi
+
+    ARCHIVER="ar"
 fi
 
 echo "[+] Dependencies OK."
 echo
 
 # ------------------------------------------------------------
-# Create directories
+# Directories
 # ------------------------------------------------------------
 
 mkdir -p "$ROOTFS_DIR"
@@ -104,17 +95,12 @@ mkdir -p "$WORK_DIR"
 # Download debootstrap
 # ------------------------------------------------------------
 
-if [ -f "$DEBOOTSTRAP_DEB" ]; then
-    echo "[+] Cached debootstrap found."
-
-    if [ ! -s "$DEBOOTSTRAP_DEB" ]; then
-        echo "[!] Cached file is empty."
-        rm -f "$DEBOOTSTRAP_DEB"
-    fi
+if [ -f "$DEBOOTSTRAP_DEB" ] && [ ! -s "$DEBOOTSTRAP_DEB" ]; then
+    echo "[!] Removing empty debootstrap cache..."
+    rm -f "$DEBOOTSTRAP_DEB"
 fi
 
 if [ ! -f "$DEBOOTSTRAP_DEB" ]; then
-
     echo "[+] Downloading debootstrap..."
     echo "[+] URL: $DEBOOTSTRAP_URL"
     echo
@@ -124,7 +110,8 @@ if [ ! -f "$DEBOOTSTRAP_DEB" ]; then
         --continue \
         -O "$DEBOOTSTRAP_DEB" \
         "$DEBOOTSTRAP_URL"
-
+else
+    echo "[+] Using cached debootstrap."
 fi
 
 [ -s "$DEBOOTSTRAP_DEB" ] ||
@@ -136,51 +123,45 @@ file "$DEBOOTSTRAP_DEB"
 echo
 
 # ------------------------------------------------------------
-# Extract debootstrap Debian package
+# Extract Debian package
 # ------------------------------------------------------------
 
 echo "[+] Extracting debootstrap package..."
 
 rm -rf "$WORK_DIR/extract"
+rm -rf "$DEBOOTSTRAP_DIR"
+
 mkdir -p "$WORK_DIR/extract"
+mkdir -p "$DEBOOTSTRAP_DIR"
 
 if [ "$ARCHIVER" = "bsdtar" ]; then
-
     bsdtar -xf "$DEBOOTSTRAP_DEB" \
         -C "$WORK_DIR/extract"
-
 else
-
     (
         cd "$WORK_DIR/extract"
         ar x "$DEBOOTSTRAP_DEB"
     )
-
 fi
 
-# Find data archive.
 DATA_ARCHIVE=""
 
-for candidate in \
-    "$WORK_DIR/extract/data.tar.xz" \
+for archive in \
     "$WORK_DIR/extract/data.tar.gz" \
+    "$WORK_DIR/extract/data.tar.xz" \
     "$WORK_DIR/extract/data.tar.zst" \
     "$WORK_DIR/extract/data.tar.lz4"
 do
-    if [ -f "$candidate" ]; then
-        DATA_ARCHIVE="$candidate"
+    if [ -f "$archive" ]; then
+        DATA_ARCHIVE="$archive"
         break
     fi
 done
 
-if [ -z "$DATA_ARCHIVE" ]; then
+[ -n "$DATA_ARCHIVE" ] ||
     die "Could not find data archive inside debootstrap.deb."
-fi
 
 echo "[+] Data archive: $(basename "$DATA_ARCHIVE")"
-
-rm -rf "$DEBOOTSTRAP_DIR"
-mkdir -p "$DEBOOTSTRAP_DIR"
 
 if command_exists bsdtar; then
     bsdtar -xf "$DATA_ARCHIVE" \
@@ -191,54 +172,79 @@ else
 fi
 
 # ------------------------------------------------------------
-# Locate debootstrap executable
+# Locate debootstrap
 # ------------------------------------------------------------
 
-DEBOOTSTRAP_BIN=""
+DEBOOTSTRAP_BIN="$DEBOOTSTRAP_DIR/usr/sbin/debootstrap"
+DEBOOTSTRAP_LIB="$DEBOOTSTRAP_DIR/usr/share/debootstrap"
 
-if [ -x "$DEBOOTSTRAP_DIR/usr/sbin/debootstrap" ]; then
-    DEBOOTSTRAP_BIN="$DEBOOTSTRAP_DIR/usr/sbin/debootstrap"
-elif [ -f "$DEBOOTSTRAP_DIR/usr/sbin/debootstrap" ]; then
-    chmod +x "$DEBOOTSTRAP_DIR/usr/sbin/debootstrap"
-    DEBOOTSTRAP_BIN="$DEBOOTSTRAP_DIR/usr/sbin/debootstrap"
-fi
+[ -f "$DEBOOTSTRAP_BIN" ] ||
+    die "debootstrap executable not found."
 
-if [ -z "$DEBOOTSTRAP_BIN" ]; then
-    die "Could not locate usr/sbin/debootstrap."
-fi
+[ -d "$DEBOOTSTRAP_LIB" ] ||
+    die "debootstrap support directory not found."
+
+chmod +x "$DEBOOTSTRAP_BIN"
 
 echo "[+] debootstrap ready:"
 echo "    $DEBOOTSTRAP_BIN"
+
+echo "[+] Support files:"
+echo "    $DEBOOTSTRAP_LIB"
 echo
 
 # ------------------------------------------------------------
-# Prevent accidental overwrite
+# Check existing rootfs
 # ------------------------------------------------------------
 
-if [ -d "$ROOTFS_DIR/bin" ] ||
-   [ -d "$ROOTFS_DIR/usr" ] ||
+if [ -d "$ROOTFS_DIR/usr" ] ||
+   [ -d "$ROOTFS_DIR/bin" ] ||
    [ -d "$ROOTFS_DIR/etc" ]; then
 
-    echo "[!] Existing rootfs detected."
-    echo
-
     if [ "${ZLINUX_FORCE:-0}" != "1" ]; then
-        echo "Set ZLINUX_FORCE=1 if you want to rebuild it:"
-        echo
-        echo "    ZLINUX_FORCE=1 ./build-rootfs.sh"
-        echo
-        exit 1
+        die "Existing rootfs detected.
+
+For a clean rebuild:
+
+ZLINUX_FORCE=1 ./build-rootfs.sh"
     fi
 
-    echo "[+] Rebuild requested."
     echo "[+] Removing existing rootfs..."
-
     rm -rf "$ROOTFS_DIR"
     mkdir -p "$ROOTFS_DIR"
 fi
 
 # ------------------------------------------------------------
-# First-stage Debian bootstrap
+# Prepare debootstrap runtime
+# ------------------------------------------------------------
+
+echo
+echo "========================================"
+echo "       Preparing debootstrap"
+echo "========================================"
+echo
+
+DEBOOTSTRAP_RUNTIME="$WORK_DIR/debootstrap-runtime"
+
+rm -rf "$DEBOOTSTRAP_RUNTIME"
+
+mkdir -p \
+    "$DEBOOTSTRAP_RUNTIME/usr/sbin" \
+    "$DEBOOTSTRAP_RUNTIME/usr/share"
+
+cp "$DEBOOTSTRAP_BIN" \
+    "$DEBOOTSTRAP_RUNTIME/usr/sbin/debootstrap"
+
+cp -a "$DEBOOTSTRAP_LIB" \
+    "$DEBOOTSTRAP_RUNTIME/usr/share/"
+
+chmod +x \
+    "$DEBOOTSTRAP_RUNTIME/usr/sbin/debootstrap"
+
+echo "[+] Runtime prepared."
+
+# ------------------------------------------------------------
+# Debian first stage
 # ------------------------------------------------------------
 
 echo
@@ -251,35 +257,51 @@ echo "[+] Bootstrapping Debian $DEBIAN_SUITE..."
 echo "[+] Target architecture: $ARCH"
 echo
 
-"$DEBOOTSTRAP_BIN" \
+# debootstrap expects its support files at /usr/share/debootstrap.
+#
+# proot gives it a temporary filesystem view where:
+#
+#   /usr/sbin/debootstrap
+#   /usr/share/debootstrap/
+#
+# are available at their expected locations.
+
+proot \
+    -0 \
+    -r "$DEBOOTSTRAP_RUNTIME" \
+    -b "$ROOTFS_DIR:/target" \
+    -w / \
+    /usr/sbin/debootstrap \
     --foreign \
     --arch="$ARCH" \
     --variant=minbase \
     "$DEBIAN_SUITE" \
-    "$ROOTFS_DIR" \
+    /target \
     "$DEBIAN_MIRROR"
 
 echo
-echo "[+] First stage completed."
+echo "[+] Debian first stage completed."
 echo
 
 # ------------------------------------------------------------
-# Verify rootfs
+# Verify first stage
 # ------------------------------------------------------------
 
-if [ ! -x "$ROOTFS_DIR/debootstrap/debootstrap" ]; then
-    die "First stage did not create /debootstrap/debootstrap."
+if [ ! -d "$ROOTFS_DIR/debootstrap" ]; then
+    die "First stage failed: /debootstrap was not created."
 fi
 
-if [ ! -d "$ROOTFS_DIR/usr" ]; then
-    die "Debian /usr directory is missing."
+if [ ! -f "$ROOTFS_DIR/debootstrap/debootstrap" ]; then
+    die "First stage failed: second-stage script missing."
 fi
 
+echo "[+] First-stage rootfs verified."
+
 # ------------------------------------------------------------
-# Configure Debian repositories
+# Configure sources
 # ------------------------------------------------------------
 
-echo "[+] Configuring Debian repositories..."
+echo "[+] Creating Debian sources.list..."
 
 mkdir -p "$ROOTFS_DIR/etc/apt"
 
@@ -290,8 +312,10 @@ deb http://security.debian.org/debian-security ${DEBIAN_SUITE}-security main
 EOF
 
 # ------------------------------------------------------------
-# Configure hostname
+# Host configuration
 # ------------------------------------------------------------
+
+echo "[+] Configuring hostname..."
 
 echo "zlinux" > "$ROOTFS_DIR/etc/hostname"
 
@@ -303,12 +327,10 @@ cat > "$ROOTFS_DIR/etc/hosts" <<EOF
 EOF
 
 # ------------------------------------------------------------
-# DNS configuration
+# DNS
 # ------------------------------------------------------------
 
 echo "[+] Configuring DNS..."
-
-mkdir -p "$ROOTFS_DIR/etc"
 
 cat > "$ROOTFS_DIR/etc/resolv.conf" <<EOF
 nameserver 1.1.1.1
@@ -316,7 +338,7 @@ nameserver 8.8.8.8
 EOF
 
 # ------------------------------------------------------------
-# Prepare second stage
+# Second stage
 # ------------------------------------------------------------
 
 echo
@@ -325,34 +347,30 @@ echo "       Debian Second Stage"
 echo "========================================"
 echo
 
-echo "[+] Preparing rootless execution..."
+echo "[+] Running second stage through proot..."
 echo
-
-# proot does not require Android root.
-#
-# -0          fake root inside Debian
-# -r          root filesystem
-# -b          bind host files where needed
-# -w          working directory
 
 PROOT_ARGS=(
     -0
     -r "$ROOTFS_DIR"
     -w /
-    -b /dev
 )
 
-# Bind Termux DNS resolver if available.
+# Android / Termux virtual filesystems
+if [ -d /dev ]; then
+    PROOT_ARGS+=(
+        -b /dev:/dev
+    )
+fi
+
 if [ -f "$PREFIX/etc/resolv.conf" ]; then
     PROOT_ARGS+=(
         -b "$PREFIX/etc/resolv.conf:/etc/resolv.conf"
     )
 fi
 
-echo "[+] Running Debian second stage..."
-echo
-
-proot "${PROOT_ARGS[@]}" \
+proot \
+    "${PROOT_ARGS[@]}" \
     /debootstrap/debootstrap \
     --second-stage
 
@@ -361,23 +379,24 @@ echo "[+] Debian second stage completed."
 echo
 
 # ------------------------------------------------------------
-# Basic Debian configuration through proot
+# Configure Debian
 # ------------------------------------------------------------
 
-echo "[+] Performing initial Debian configuration..."
+echo "[+] Configuring Debian..."
 
-proot "${PROOT_ARGS[@]}" \
+proot \
+    "${PROOT_ARGS[@]}" \
     /bin/bash -c '
 
 set -e
 
 export DEBIAN_FRONTEND=noninteractive
 
-echo "[+] Updating package indexes..."
+echo "[+] Updating package lists..."
 
 apt-get update
 
-echo "[+] Installing essential packages..."
+echo "[+] Installing base utilities..."
 
 apt-get install -y \
     bash \
@@ -396,10 +415,9 @@ apt-get install -y \
     passwd \
     locales \
     tzdata \
-    dialog \
     apt-utils
 
-echo "[+] Generating locale..."
+echo "[+] Configuring locale..."
 
 if command -v locale-gen >/dev/null 2>&1; then
     sed -i "s/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/" \
@@ -410,11 +428,7 @@ fi
 
 echo "LANG=en_US.UTF-8" > /etc/default/locale
 
-echo "[+] Setting hostname..."
-
-echo "zlinux" > /etc/hostname
-
-echo "[+] Cleaning package cache..."
+echo "[+] Cleaning apt cache..."
 
 apt-get clean
 
@@ -424,9 +438,10 @@ echo "[+] Debian configuration complete."
 '
 
 # ------------------------------------------------------------
-# Create Z-Linux launcher
+# Create launcher
 # ------------------------------------------------------------
 
+echo
 echo "[+] Creating Z-Linux launcher..."
 
 LAUNCHER="$ROOT_DIR/zlinux"
@@ -438,43 +453,32 @@ ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOTFS_DIR="$ROOT_DIR/rootfs"
 
 if [ ! -d "$ROOTFS_DIR" ]; then
-    echo "[ERROR] Z-Linux rootfs does not exist."
+    echo "[ERROR] Z-Linux rootfs not found."
     exit 1
 fi
 
-command -v proot >/dev/null 2>&1 || {
+if ! command -v proot >/dev/null 2>&1; then
     echo "[ERROR] proot is not installed."
     echo "Run: pkg install proot"
     exit 1
-}
+fi
 
-PROOT_ARGS=(
+ARGS=(
     -0
     -r "$ROOTFS_DIR"
     -w /root
-    -b /dev
 )
 
-if [ -d /proc ]; then
-    PROOT_ARGS+=(
-        -b /proc:/proc
-    )
-fi
+[ -d /dev ] && ARGS+=(
+    -b /dev:/dev
+)
 
-if [ -d /sys ]; then
-    PROOT_ARGS+=(
-        -b /sys:/sys
-    )
-fi
-
-if [ -f "$PREFIX/etc/resolv.conf" ]; then
-    PROOT_ARGS+=(
-        -b "$PREFIX/etc/resolv.conf:/etc/resolv.conf"
-    )
-fi
+[ -f "$PREFIX/etc/resolv.conf" ] && ARGS+=(
+    -b "$PREFIX/etc/resolv.conf:/etc/resolv.conf"
+)
 
 exec proot \
-    "${PROOT_ARGS[@]}" \
+    "${ARGS[@]}" \
     /bin/bash \
     --login
 EOF
@@ -499,17 +503,24 @@ echo "[+] Launcher:"
 echo "    $LAUNCHER"
 echo
 
-echo "[+] Checking Debian..."
+echo "[+] Debian architecture:"
 
 proot \
     -0 \
     -r "$ROOTFS_DIR" \
     -w / \
-    /bin/bash -c '
-echo "Debian: $(cat /etc/debian_version 2>/dev/null || echo unknown)"
-echo "Architecture: $(dpkg --print-architecture 2>/dev/null || echo unknown)"
-echo "Kernel: $(uname -r)"
-'
+    /bin/bash -c \
+    'dpkg --print-architecture'
+
+echo
+echo "[+] Debian version:"
+
+proot \
+    -0 \
+    -r "$ROOTFS_DIR" \
+    -w / \
+    /bin/bash -c \
+    'cat /etc/debian_version'
 
 echo
 echo "========================================"
@@ -518,9 +529,6 @@ echo "========================================"
 echo
 echo "Start Z-Linux with:"
 echo
-echo "    $ROOT_DIR/zlinux"
-echo
-echo "If you want a completely fresh rebuild:"
-echo
-echo "    ZLINUX_FORCE=1 ./build-rootfs.sh"
+echo "    cd $ROOT_DIR"
+echo "    ./zlinux"
 echo
