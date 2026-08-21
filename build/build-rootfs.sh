@@ -5,6 +5,14 @@ set -euo pipefail
 # ============================================================
 # Z-Linux Debian RootFS Builder
 # Termux / Android - rootless proot build
+#
+# Features:
+#   - Automatic architecture detection
+#   - Debian rootfs bootstrap
+#   - Pre-install profile wizard
+#   - Multi-select profiles
+#   - Hardware-aware package filtering
+#   - Z-Linux "get" package manager
 # ============================================================
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -16,12 +24,15 @@ WORK_DIR="$ROOT_DIR/.work"
 BOOTSTRAP_DIR="$ROOT_DIR/bootstrap"
 DETECT_ARCH="$BOOTSTRAP_DIR/detect-arch.sh"
 
+EDITIONS_DIR="$ROOT_DIR/editions"
+GET_SCRIPT="$ROOT_DIR/scripts/get"
+
 DEBIAN_SUITE="${DEBIAN_SUITE:-stable}"
 DEBIAN_MIRROR="${DEBIAN_MIRROR:-https://deb.debian.org/debian}"
 
 DEBOOTSTRAP_VERSION="${DEBOOTSTRAP_VERSION:-1.0.141}"
-
 DEBOOTSTRAP_DEB="$CACHE_DIR/debootstrap.deb"
+
 DEBOOTSTRAP_URL="https://deb.debian.org/debian/pool/main/d/debootstrap/debootstrap_${DEBOOTSTRAP_VERSION}_all.deb"
 
 DEBOOTSTRAP_DIR="$WORK_DIR/debootstrap"
@@ -29,9 +40,9 @@ DEBOOTSTRAP_RUNTIME="$WORK_DIR/debootstrap-runtime"
 
 export DEBIAN_FRONTEND=noninteractive
 
-# ------------------------------------------------------------
+# ============================================================
 # Helpers
-# ------------------------------------------------------------
+# ============================================================
 
 die() {
     echo
@@ -51,9 +62,9 @@ cleanup_on_error() {
 
 trap cleanup_on_error ERR
 
-# ------------------------------------------------------------
-# Termux check
-# ------------------------------------------------------------
+# ============================================================
+# Termux validation
+# ============================================================
 
 if [ -z "${PREFIX:-}" ]; then
     die "This builder must run inside Termux."
@@ -63,9 +74,9 @@ if [ ! -d "$PREFIX" ]; then
     die "Invalid Termux PREFIX: $PREFIX"
 fi
 
-# ------------------------------------------------------------
+# ============================================================
 # Architecture
-# ------------------------------------------------------------
+# ============================================================
 
 if [ ! -f "$DETECT_ARCH" ]; then
     die "Architecture detector not found:
@@ -85,35 +96,38 @@ case "$ARCH" in
         ;;
 esac
 
-# ------------------------------------------------------------
+# ============================================================
 # Banner
-# ------------------------------------------------------------
+# ============================================================
 
-echo "========================================"
-echo "       Z-Linux RootFS Builder"
-echo "========================================"
+clear 2>/dev/null || true
+
+echo "================================================"
+echo "                 Z-LINUX BUILDER"
+echo "================================================"
+echo
+echo "  Debian-based Linux environment for Android"
+echo
+echo "------------------------------------------------"
+echo "  Termux architecture : ${ZLINUX_TERMUX_ARCH:-unknown}"
+echo "  Android ABI         : ${ZLINUX_ANDROID_ABI:-unknown}"
+echo "  Z-Linux architecture: ${ZLINUX_ARCH:-unknown}"
+echo "  Debian architecture : $ARCH"
+echo "  Debian suite        : $DEBIAN_SUITE"
+echo "------------------------------------------------"
 echo
 
-echo "[+] Termux architecture : ${ZLINUX_TERMUX_ARCH:-unknown}"
-echo "[+] Android ABI         : ${ZLINUX_ANDROID_ABI:-unknown}"
-echo "[+] Z-Linux architecture: ${ZLINUX_ARCH:-unknown}"
-echo "[+] Debian architecture  : $ARCH"
-echo "[+] Debian suite         : $DEBIAN_SUITE"
-echo "[+] Debian mirror        : $DEBIAN_MIRROR"
-echo "[+] RootFS               : $ROOTFS_DIR"
-echo
-
-# ------------------------------------------------------------
+# ============================================================
 # Dependencies
-# ------------------------------------------------------------
+# ============================================================
 
-echo "[+] Checking dependencies..."
+echo "[+] Checking Termux dependencies..."
 
 for cmd in bash wget file proot; do
     if ! command_exists "$cmd"; then
         die "Missing command: $cmd
 
-Install it in Termux with:
+Install with:
 
     pkg install $cmd"
     fi
@@ -126,345 +140,697 @@ elif command_exists ar && command_exists tar; then
 else
     die "No supported archive extractor found.
 
-Install bsdtar:
+Install:
 
     pkg install bsdtar"
 fi
 
 echo "[+] Dependencies OK."
-echo "[+] Archive tool: $ARCHIVER"
 echo
 
-# ------------------------------------------------------------
-# Directories
-# ------------------------------------------------------------
+# ============================================================
+# Profile definitions
+# ============================================================
 
-mkdir -p "$ROOTFS_DIR"
-mkdir -p "$CACHE_DIR"
-mkdir -p "$WORK_DIR"
+PROFILE_SECURITY="security"
+PROFILE_DEVELOPER="developer"
+PROFILE_DOCUMENTATION="documentation"
+PROFILE_ENTERTAINMENT="entertainment"
 
-# ------------------------------------------------------------
-# Existing rootfs
-# ------------------------------------------------------------
+SELECTED_PROFILES=()
 
-if [ -d "$ROOTFS_DIR/usr" ] ||
-   [ -d "$ROOTFS_DIR/bin" ] ||
-   [ -d "$ROOTFS_DIR/etc" ]; then
+profile_description() {
+    case "$1" in
+        security)
+            echo "Ethical hacking, penetration testing and security research"
+            ;;
+        developer)
+            echo "Programming, software engineering and development"
+            ;;
+        documentation)
+            echo "Office work, technical writing and documentation"
+            ;;
+        entertainment)
+            echo "Video editing, graphics, audio and multimedia"
+            ;;
+        *)
+            echo "Unknown profile"
+            ;;
+    esac
+}
 
-    if [ "${ZLINUX_FORCE:-0}" != "1" ]; then
-        die "Existing rootfs detected.
+profile_file() {
+    case "$1" in
+        security)
+            echo "$EDITIONS_DIR/security.txt"
+            ;;
+        developer)
+            echo "$EDITIONS_DIR/developer.txt"
+            ;;
+        documentation)
+            echo "$EDITIONS_DIR/documentation.txt"
+            ;;
+        entertainment)
+            echo "$EDITIONS_DIR/entertainment.txt"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
 
-For a clean rebuild:
+valid_profile() {
+    case "$1" in
+        security|developer|documentation|entertainment)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+# ============================================================
+# Profile selection
+# ============================================================
+
+select_profiles() {
+
+    echo "================================================"
+    echo "            Z-LINUX PROFILE SETUP"
+    echo "================================================"
+    echo
+    echo "Choose what this Z-Linux installation will be"
+    echo "optimized for."
+    echo
+    echo "You can select multiple profiles."
+    echo
+    echo "  1) Security"
+    echo "     Ethical hacking / security research"
+    echo
+    echo "  2) Developer"
+    echo "     Programming / software development"
+    echo
+    echo "  3) Documentation"
+    echo "     Office / technical documentation"
+    echo
+    echo "  4) Entertainment"
+    echo "     Video / audio / graphics / multimedia"
+    echo
+    echo "  5) All profiles"
+    echo
+    echo "------------------------------------------------"
+    echo
+
+    local input=""
+
+    if [ -n "${ZLINUX_PROFILES:-}" ]; then
+
+        input="$ZLINUX_PROFILES"
+
+        echo "[+] Profiles supplied through ZLINUX_PROFILES:"
+        echo "    $input"
+        echo
+
+    elif [ "${ZLINUX_NONINTERACTIVE:-0}" = "1" ]; then
+
+        input="developer"
+
+        echo "[+] Non-interactive mode."
+        echo "[+] Default profile: developer"
+        echo
+
+    else
+
+        while true; do
+
+            printf "Select profile(s) [1-5, e.g. 1,2]: "
+            read -r input
+
+            [ -n "$input" ] && break
+
+            echo
+            echo "[!] Please select at least one profile."
+        done
+    fi
+
+    input="$(printf '%s' "$input" | tr ',' ' ')"
+
+    for item in $input; do
+
+        case "$item" in
+
+            1)
+                item="security"
+                ;;
+
+            2)
+                item="developer"
+                ;;
+
+            3)
+                item="documentation"
+                ;;
+
+            4)
+                item="entertainment"
+                ;;
+
+            5|all)
+                SELECTED_PROFILES=(
+                    security
+                    developer
+                    documentation
+                    entertainment
+                )
+                return 0
+                ;;
+
+        esac
+
+        item="$(printf '%s' "$item" | tr '[:upper:]' '[:lower:]')"
+
+        if ! valid_profile "$item"; then
+            die "Unknown profile: $item"
+        fi
+
+        # Prevent duplicates.
+        local exists=0
+
+        for selected in "${SELECTED_PROFILES[@]}"; do
+            if [ "$selected" = "$item" ]; then
+                exists=1
+                break
+            fi
+        done
+
+        if [ "$exists" -eq 0 ]; then
+            SELECTED_PROFILES+=("$item")
+        fi
+    done
+
+    [ "${#SELECTED_PROFILES[@]}" -gt 0 ] ||
+        die "No profiles selected."
+}
+
+# ============================================================
+# Hardware detection
+# ============================================================
+
+detect_hardware() {
+
+    CPU_CORES="$(
+        getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1
+    )"
+
+    if [ -r /proc/meminfo ]; then
+        MEMORY_MB="$(
+            awk '/MemTotal:/ {
+                printf "%d", $2 / 1024
+            }' /proc/meminfo
+        )"
+    else
+        MEMORY_MB=0
+    fi
+
+    if command_exists df; then
+        STORAGE_AVAILABLE="$(
+            df -Pm "$ROOT_DIR" 2>/dev/null |
+            awk 'NR==2 {print $4}'
+        )"
+    else
+        STORAGE_AVAILABLE=0
+    fi
+
+    echo "================================================"
+    echo "             HARDWARE DETECTION"
+    echo "================================================"
+    echo
+    echo "  Architecture : ${ZLINUX_ARCH:-unknown}"
+    echo "  CPU cores    : $CPU_CORES"
+    echo "  Memory       : ${MEMORY_MB} MB"
+    echo "  Free storage : ${STORAGE_AVAILABLE} MB"
+    echo
+
+    if [ "$MEMORY_MB" -gt 0 ] && [ "$MEMORY_MB" -lt 2048 ]; then
+        echo "[!] Low-memory device detected."
+        echo "[!] Heavy desktop packages may be skipped."
+        echo
+    fi
+}
+
+# ============================================================
+# Package hardware filter
+# ============================================================
+
+hardware_allows_package() {
+
+    local package="$1"
+
+    # Allow disabling hardware filtering.
+    if [ "${ZLINUX_HW_AUTO:-1}" = "0" ]; then
+        return 0
+    fi
+
+    # --------------------------------------------------------
+    # RAM < 2 GB
+    # --------------------------------------------------------
+
+    if [ "$MEMORY_MB" -gt 0 ] &&
+       [ "$MEMORY_MB" -lt 2048 ]; then
+
+        case "$package" in
+            blender)
+                return 1
+                ;;
+
+            kdenlive)
+                return 1
+                ;;
+
+            obs-studio)
+                return 1
+                ;;
+
+            libreoffice)
+                return 1
+                ;;
+
+            docker.io)
+                return 1
+                ;;
+
+            docker-compose)
+                return 1
+                ;;
+        esac
+    fi
+
+    # --------------------------------------------------------
+    # Single-core systems
+    # --------------------------------------------------------
+
+    if [ "$CPU_CORES" -lt 2 ]; then
+
+        case "$package" in
+            blender)
+                return 1
+                ;;
+
+            kdenlive)
+                return 1
+                ;;
+
+            obs-studio)
+                return 1
+                ;;
+
+            docker.io)
+                return 1
+                ;;
+        esac
+    fi
+
+    return 0
+}
+
+# ============================================================
+# Profile package resolver
+# ============================================================
+
+collect_profile_packages() {
+
+    local profile="$1"
+    local file
+
+    file="$(profile_file "$profile")"
+
+    [ -f "$file" ] ||
+        die "Profile file missing:
+
+$file"
+
+    while IFS= read -r package || [ -n "$package" ]; do
+
+        # Remove comments.
+        package="${package%%#*}"
+
+        # Trim whitespace.
+        package="$(printf '%s' "$package" |
+            sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+
+        [ -n "$package" ] || continue
+
+        if hardware_allows_package "$package"; then
+
+            PROFILE_PACKAGES+=("$package")
+
+        else
+
+            echo "[HW] Skipping heavy package: $package"
+        fi
+
+    done < "$file"
+}
+
+# ============================================================
+# Resolve selected profiles
+# ============================================================
+
+resolve_profiles() {
+
+    PROFILE_PACKAGES=()
+
+    echo "================================================"
+    echo "             PROFILE RESOLUTION"
+    echo "================================================"
+    echo
+
+    for profile in "${SELECTED_PROFILES[@]}"; do
+
+        echo "[+] $profile"
+        echo "    $(profile_description "$profile")"
+
+        collect_profile_packages "$profile"
+
+        echo
+    done
+
+    # Deduplicate package list.
+    if [ "${#PROFILE_PACKAGES[@]}" -gt 0 ]; then
+
+        mapfile -t PROFILE_PACKAGES < <(
+            printf '%s\n' "${PROFILE_PACKAGES[@]}" |
+            sort -u
+        )
+    fi
+
+    echo "[+] Packages selected: ${#PROFILE_PACKAGES[@]}"
+    echo
+}
+
+# ============================================================
+# Show installation plan
+# ============================================================
+
+show_installation_plan() {
+
+    echo "================================================"
+    echo "              INSTALLATION PLAN"
+    echo "================================================"
+    echo
+
+    echo "Profiles:"
+    for profile in "${SELECTED_PROFILES[@]}"; do
+        echo "  [+] $profile"
+    done
+
+    echo
+    echo "Packages: ${#PROFILE_PACKAGES[@]}"
+    echo
+
+    if [ "${ZLINUX_AUTO_CONFIRM:-0}" = "1" ]; then
+        return 0
+    fi
+
+    if [ "${ZLINUX_NONINTERACTIVE:-0}" = "1" ]; then
+        return 0
+    fi
+
+    printf "Continue with this configuration? [Y/n]: "
+    read -r answer
+
+    case "${answer:-Y}" in
+        n|N|no|NO)
+            echo
+            echo "[Z-Linux] Installation cancelled."
+            exit 0
+            ;;
+    esac
+
+    echo
+}
+
+# ============================================================
+# Bootstrap Debian
+# ============================================================
+
+prepare_directories() {
+
+    mkdir -p "$ROOTFS_DIR"
+    mkdir -p "$CACHE_DIR"
+    mkdir -p "$WORK_DIR"
+}
+
+download_debootstrap() {
+
+    echo "================================================"
+    echo "             DEBOOTSTRAP SETUP"
+    echo "================================================"
+    echo
+
+    if [ ! -f "$DEBOOTSTRAP_DEB" ]; then
+
+        echo "[+] Downloading debootstrap..."
+        echo
+
+        wget \
+            --https-only \
+            --continue \
+            -O "$DEBOOTSTRAP_DEB" \
+            "$DEBOOTSTRAP_URL"
+
+    else
+
+        echo "[+] Using cached debootstrap."
+
+    fi
+
+    [ -s "$DEBOOTSTRAP_DEB" ] ||
+        die "debootstrap package is empty."
+
+    echo
+}
+
+extract_debootstrap() {
+
+    rm -rf "$WORK_DIR/extract"
+    rm -rf "$DEBOOTSTRAP_DIR"
+
+    mkdir -p "$WORK_DIR/extract"
+    mkdir -p "$DEBOOTSTRAP_DIR"
+
+    echo "[+] Extracting debootstrap..."
+
+    if [ "$ARCHIVER" = "bsdtar" ]; then
+
+        bsdtar \
+            -xf "$DEBOOTSTRAP_DEB" \
+            -C "$WORK_DIR/extract"
+
+    else
+
+        (
+            cd "$WORK_DIR/extract"
+            ar x "$DEBOOTSTRAP_DEB"
+        )
+
+    fi
+
+    DATA_ARCHIVE=""
+
+    for archive in \
+        "$WORK_DIR/extract/data.tar.gz" \
+        "$WORK_DIR/extract/data.tar.xz" \
+        "$WORK_DIR/extract/data.tar.zst" \
+        "$WORK_DIR/extract/data.tar.lz4"
+    do
+
+        if [ -f "$archive" ]; then
+            DATA_ARCHIVE="$archive"
+            break
+        fi
+
+    done
+
+    [ -n "$DATA_ARCHIVE" ] ||
+        die "Could not find debootstrap data archive."
+
+    if command_exists bsdtar; then
+
+        bsdtar \
+            -xf "$DATA_ARCHIVE" \
+            -C "$DEBOOTSTRAP_DIR"
+
+    else
+
+        tar \
+            -xf "$DATA_ARCHIVE" \
+            -C "$DEBOOTSTRAP_DIR"
+
+    fi
+}
+
+prepare_debootstrap_runtime() {
+
+    DEBOOTSTRAP_BIN="$DEBOOTSTRAP_DIR/usr/sbin/debootstrap"
+    DEBOOTSTRAP_LIB="$DEBOOTSTRAP_DIR/usr/share/debootstrap"
+
+    [ -f "$DEBOOTSTRAP_BIN" ] ||
+        die "debootstrap executable not found."
+
+    [ -d "$DEBOOTSTRAP_LIB" ] ||
+        die "debootstrap support files not found."
+
+    chmod +x "$DEBOOTSTRAP_BIN"
+
+    rm -rf "$DEBOOTSTRAP_RUNTIME"
+
+    mkdir -p \
+        "$DEBOOTSTRAP_RUNTIME/usr/sbin" \
+        "$DEBOOTSTRAP_RUNTIME/usr/share"
+
+    cp \
+        "$DEBOOTSTRAP_BIN" \
+        "$DEBOOTSTRAP_RUNTIME/usr/sbin/debootstrap"
+
+    cp -a \
+        "$DEBOOTSTRAP_LIB" \
+        "$DEBOOTSTRAP_RUNTIME/usr/share/"
+}
+
+# ============================================================
+# Rootfs creation
+# ============================================================
+
+create_rootfs() {
+
+    echo
+    echo "================================================"
+    echo "              CREATING DEBIAN ROOTFS"
+    echo "================================================"
+    echo
+
+    if [ -d "$ROOTFS_DIR/usr" ] ||
+       [ -d "$ROOTFS_DIR/etc" ]; then
+
+        if [ "${ZLINUX_FORCE:-0}" != "1" ]; then
+
+            die "Existing rootfs detected.
+
+Use:
 
     ZLINUX_FORCE=1 ./build/build-rootfs.sh"
+
+        fi
+
+        rm -rf "$ROOTFS_DIR"
+        mkdir -p "$ROOTFS_DIR"
     fi
 
-    echo "[+] Removing existing rootfs..."
-    rm -rf "$ROOTFS_DIR"
-    mkdir -p "$ROOTFS_DIR"
-fi
-
-# ------------------------------------------------------------
-# Download debootstrap
-# ------------------------------------------------------------
-
-if [ -f "$DEBOOTSTRAP_DEB" ] &&
-   [ ! -s "$DEBOOTSTRAP_DEB" ]; then
-
-    echo "[!] Removing empty debootstrap cache..."
-    rm -f "$DEBOOTSTRAP_DEB"
-fi
-
-if [ ! -f "$DEBOOTSTRAP_DEB" ]; then
-
-    echo "========================================"
-    echo "       Downloading debootstrap"
-    echo "========================================"
+    echo "[+] Debian architecture: $ARCH"
+    echo "[+] Suite: $DEBIAN_SUITE"
     echo
 
-    echo "[+] Version : $DEBOOTSTRAP_VERSION"
-    echo "[+] URL     : $DEBOOTSTRAP_URL"
+    proot \
+        -0 \
+        -r "$DEBOOTSTRAP_RUNTIME" \
+        -b "$ROOTFS_DIR:/target" \
+        -w / \
+        /usr/sbin/debootstrap \
+        --foreign \
+        --arch="$ARCH" \
+        --variant=minbase \
+        "$DEBIAN_SUITE" \
+        /target \
+        "$DEBIAN_MIRROR"
+
+    [ -f "$ROOTFS_DIR/debootstrap/debootstrap" ] ||
+        die "Debian first stage failed."
+
     echo
+    echo "[+] Debian first stage complete."
 
-    wget \
-        --https-only \
-        --continue \
-        -O "$DEBOOTSTRAP_DEB" \
-        "$DEBOOTSTRAP_URL"
-else
-    echo "[+] Using cached debootstrap."
-fi
+    proot \
+        -0 \
+        -r "$ROOTFS_DIR" \
+        -w / \
+        /debootstrap/debootstrap \
+        --second-stage
 
-[ -s "$DEBOOTSTRAP_DEB" ] ||
-    die "debootstrap package is empty."
+    echo
+    echo "[+] Debian second stage complete."
+}
 
-echo
-echo "[+] debootstrap package:"
-file "$DEBOOTSTRAP_DEB"
-echo
+# ============================================================
+# proot rootfs arguments
+# ============================================================
 
-# ------------------------------------------------------------
-# Extract debootstrap package
-# ------------------------------------------------------------
+rootfs_proot_args() {
 
-echo "========================================"
-echo "       Extracting debootstrap"
-echo "========================================"
-echo
-
-rm -rf "$WORK_DIR/extract"
-rm -rf "$DEBOOTSTRAP_DIR"
-
-mkdir -p "$WORK_DIR/extract"
-mkdir -p "$DEBOOTSTRAP_DIR"
-
-if [ "$ARCHIVER" = "bsdtar" ]; then
-
-    bsdtar \
-        -xf "$DEBOOTSTRAP_DEB" \
-        -C "$WORK_DIR/extract"
-
-else
-
-    (
-        cd "$WORK_DIR/extract"
-        ar x "$DEBOOTSTRAP_DEB"
+    PROOT_ROOT_ARGS=(
+        -0
+        -r "$ROOTFS_DIR"
+        -w /
     )
 
-fi
-
-DATA_ARCHIVE=""
-
-for archive in \
-    "$WORK_DIR/extract/data.tar.gz" \
-    "$WORK_DIR/extract/data.tar.xz" \
-    "$WORK_DIR/extract/data.tar.zst" \
-    "$WORK_DIR/extract/data.tar.lz4"
-do
-
-    if [ -f "$archive" ]; then
-        DATA_ARCHIVE="$archive"
-        break
+    if [ -d /dev ]; then
+        PROOT_ROOT_ARGS+=(
+            -b /dev:/dev
+        )
     fi
 
-done
+    if [ -f "$PREFIX/etc/resolv.conf" ]; then
+        PROOT_ROOT_ARGS+=(
+            -b "$PREFIX/etc/resolv.conf:/etc/resolv.conf"
+        )
+    fi
+}
 
-[ -n "$DATA_ARCHIVE" ] ||
-    die "Could not find debootstrap data archive."
+# ============================================================
+# Base Debian configuration
+# ============================================================
 
-echo "[+] Data archive: $(basename "$DATA_ARCHIVE")"
+configure_debian() {
 
-if command_exists bsdtar; then
+    rootfs_proot_args
 
-    bsdtar \
-        -xf "$DATA_ARCHIVE" \
-        -C "$DEBOOTSTRAP_DIR"
+    echo
+    echo "================================================"
+    echo "              CONFIGURING DEBIAN"
+    echo "================================================"
+    echo
 
-else
+    mkdir -p "$ROOTFS_DIR/etc/apt"
 
-    tar \
-        -xf "$DATA_ARCHIVE" \
-        -C "$DEBOOTSTRAP_DIR"
-
-fi
-
-# ------------------------------------------------------------
-# Locate debootstrap
-# ------------------------------------------------------------
-
-DEBOOTSTRAP_BIN="$DEBOOTSTRAP_DIR/usr/sbin/debootstrap"
-DEBOOTSTRAP_LIB="$DEBOOTSTRAP_DIR/usr/share/debootstrap"
-
-[ -f "$DEBOOTSTRAP_BIN" ] ||
-    die "debootstrap executable not found."
-
-[ -d "$DEBOOTSTRAP_LIB" ] ||
-    die "debootstrap support directory not found."
-
-chmod +x "$DEBOOTSTRAP_BIN"
-
-echo "[+] debootstrap ready."
-echo "    $DEBOOTSTRAP_BIN"
-echo
-
-# ------------------------------------------------------------
-# Prepare runtime
-# ------------------------------------------------------------
-
-echo "========================================"
-echo "       Preparing Bootstrap Runtime"
-echo "========================================"
-echo
-
-rm -rf "$DEBOOTSTRAP_RUNTIME"
-
-mkdir -p \
-    "$DEBOOTSTRAP_RUNTIME/usr/sbin" \
-    "$DEBOOTSTRAP_RUNTIME/usr/share"
-
-cp \
-    "$DEBOOTSTRAP_BIN" \
-    "$DEBOOTSTRAP_RUNTIME/usr/sbin/debootstrap"
-
-cp -a \
-    "$DEBOOTSTRAP_LIB" \
-    "$DEBOOTSTRAP_RUNTIME/usr/share/"
-
-chmod +x \
-    "$DEBOOTSTRAP_RUNTIME/usr/sbin/debootstrap"
-
-echo "[+] Runtime prepared."
-echo
-
-# ------------------------------------------------------------
-# First stage
-# ------------------------------------------------------------
-
-echo "========================================"
-echo "       Debian First Stage"
-echo "========================================"
-echo
-
-echo "[+] Bootstrapping Debian..."
-echo "[+] Suite        : $DEBIAN_SUITE"
-echo "[+] Architecture: $ARCH"
-echo
-
-proot \
-    -0 \
-    -r "$DEBOOTSTRAP_RUNTIME" \
-    -b "$ROOTFS_DIR:/target" \
-    -w / \
-    /usr/sbin/debootstrap \
-    --foreign \
-    --arch="$ARCH" \
-    --variant=minbase \
-    "$DEBIAN_SUITE" \
-    /target \
-    "$DEBIAN_MIRROR"
-
-echo
-echo "[+] First stage completed."
-echo
-
-# ------------------------------------------------------------
-# Verify first stage
-# ------------------------------------------------------------
-
-[ -d "$ROOTFS_DIR/debootstrap" ] ||
-    die "First stage failed: /debootstrap missing."
-
-[ -f "$ROOTFS_DIR/debootstrap/debootstrap" ] ||
-    die "First stage failed: second-stage script missing."
-
-echo "[+] First-stage rootfs verified."
-echo
-
-# ------------------------------------------------------------
-# Configure sources
-# ------------------------------------------------------------
-
-echo "[+] Configuring Debian repositories..."
-
-mkdir -p "$ROOTFS_DIR/etc/apt"
-
-cat > "$ROOTFS_DIR/etc/apt/sources.list" <<EOF
+    cat > "$ROOTFS_DIR/etc/apt/sources.list" <<EOF
 deb $DEBIAN_MIRROR $DEBIAN_SUITE main
 deb $DEBIAN_MIRROR ${DEBIAN_SUITE}-updates main
 deb https://security.debian.org/debian-security ${DEBIAN_SUITE}-security main
 EOF
 
-# ------------------------------------------------------------
-# Host configuration
-# ------------------------------------------------------------
+    echo "zlinux" > "$ROOTFS_DIR/etc/hostname"
 
-echo "[+] Configuring hostname..."
-
-echo "zlinux" > "$ROOTFS_DIR/etc/hostname"
-
-cat > "$ROOTFS_DIR/etc/hosts" <<EOF
+    cat > "$ROOTFS_DIR/etc/hosts" <<EOF
 127.0.0.1 localhost
 127.0.1.1 zlinux
-
 ::1 localhost ip6-localhost ip6-loopback
 EOF
 
-# ------------------------------------------------------------
-# DNS
-# ------------------------------------------------------------
-
-echo "[+] Configuring DNS..."
-
-cat > "$ROOTFS_DIR/etc/resolv.conf" <<EOF
+    cat > "$ROOTFS_DIR/etc/resolv.conf" <<EOF
 nameserver 1.1.1.1
 nameserver 8.8.8.8
 EOF
 
-# ------------------------------------------------------------
-# proot arguments
-# ------------------------------------------------------------
-
-PROOT_ARGS=(
-    -0
-    -r "$ROOTFS_DIR"
-    -w /
-)
-
-# Android / Termux /dev
-if [ -d /dev ]; then
-    PROOT_ARGS+=(
-        -b /dev:/dev
-    )
-fi
-
-# Termux DNS
-if [ -f "$PREFIX/etc/resolv.conf" ]; then
-    PROOT_ARGS+=(
-        -b "$PREFIX/etc/resolv.conf:/etc/resolv.conf"
-    )
-fi
-
-# ------------------------------------------------------------
-# Second stage
-# ------------------------------------------------------------
-
-echo
-echo "========================================"
-echo "       Debian Second Stage"
-echo "========================================"
-echo
-
-proot \
-    "${PROOT_ARGS[@]}" \
-    /debootstrap/debootstrap \
-    --second-stage
-
-echo
-echo "[+] Second stage completed."
-echo
-
-# ------------------------------------------------------------
-# Debian configuration
-# ------------------------------------------------------------
-
-echo "========================================"
-echo "       Configuring Debian"
-echo "========================================"
-echo
-
-proot \
-    "${PROOT_ARGS[@]}" \
-    /bin/bash -c '
+    proot \
+        "${PROOT_ROOT_ARGS[@]}" \
+        /bin/bash -c '
 
 set -e
 
 export DEBIAN_FRONTEND=noninteractive
 
-echo "[+] Updating package lists..."
-
 apt-get update
-
-echo "[+] Installing base utilities..."
 
 apt-get install -y \
     bash \
@@ -485,145 +851,47 @@ apt-get install -y \
     tzdata \
     apt-utils
 
-echo "[+] Configuring locale..."
+echo "LANG=en_US.UTF-8" > /etc/default/locale
 
 if command -v locale-gen >/dev/null 2>&1; then
-
-    if [ -f /etc/locale.gen ]; then
-        sed -i \
-            "s/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/" \
-            /etc/locale.gen || true
-    fi
+    sed -i \
+        "s/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/" \
+        /etc/locale.gen || true
 
     locale-gen || true
 fi
-
-echo "LANG=en_US.UTF-8" > /etc/default/locale
-
-echo "[+] Cleaning apt cache..."
-
-apt-get clean
-
-rm -rf /var/lib/apt/lists/*
-
-echo "[+] Debian configuration complete."
 '
-
-# ------------------------------------------------------------
-# Create launcher
-# ------------------------------------------------------------
-
-echo
-echo "========================================"
-echo "       Creating Z-Linux Launcher"
-echo "========================================"
-echo
-
-LAUNCHER="$ROOT_DIR/zlinux"
-
-cat > "$LAUNCHER" <<'EOF'
-#!/data/data/com.termux/files/usr/bin/bash
-
-set -e
-
-ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ROOTFS_DIR="$ROOT_DIR/rootfs"
-
-die() {
-    echo "[ERROR] $*" >&2
-    exit 1
 }
 
-[ -d "$ROOTFS_DIR" ] ||
-    die "Z-Linux rootfs not found."
+# ============================================================
+# Install Z-Linux "get"
+# ============================================================
 
-command -v proot >/dev/null 2>&1 ||
-    die "proot is not installed.
+install_get() {
 
-Install it with:
+    echo
+    echo "================================================"
+    echo "          INSTALLING Z-LINUX PACKAGE MANAGER"
+    echo "================================================"
+    echo
 
-    pkg install proot"
+    if [ ! -f "$GET_SCRIPT" ]; then
+        die "Z-Linux get script not found:
 
-ARGS=(
-    -0
-    -r "$ROOTFS_DIR"
-    -w /root
-)
+$GET_SCRIPT"
+    fi
 
-[ -d /dev ] && ARGS+=(
-    -b /dev:/dev
-)
+    mkdir -p "$ROOTFS_DIR/usr/local/bin"
 
-[ -f "$PREFIX/etc/resolv.conf" ] && ARGS+=(
-    -b "$PREFIX/etc/resolv.conf:/etc/resolv.conf"
-)
+    cp \
+        "$GET_SCRIPT" \
+        "$ROOTFS_DIR/usr/local/bin/get"
 
-export HOME=/root
-export TERM="${TERM:-xterm-256color}"
+    chmod +x \
+        "$ROOTFS_DIR/usr/local/bin/get"
 
-exec proot \
-    "${ARGS[@]}" \
-    /bin/bash \
-    --login
-EOF
+    echo "[+] Installed:"
+    echo "    /usr/local/bin/get"
+}
 
-chmod +x "$LAUNCHER"
-
-# ------------------------------------------------------------
-# Final verification
-# ------------------------------------------------------------
-
-echo
-echo "========================================"
-echo "       Z-Linux RootFS Verification"
-echo "========================================"
-echo
-
-echo "[+] Expected architecture: $ARCH"
-
-ACTUAL_ARCH="$(
-    proot \
-        -0 \
-        -r "$ROOTFS_DIR" \
-        -w / \
-        /bin/bash -c \
-        'dpkg --print-architecture'
-)"
-
-echo "[+] RootFS architecture: $ACTUAL_ARCH"
-
-if [ "$ACTUAL_ARCH" != "$ARCH" ]; then
-    die "Architecture mismatch.
-
-Expected : $ARCH
-Detected : $ACTUAL_ARCH"
-fi
-
-echo
-echo "[+] Debian version:"
-
-proot \
-    -0 \
-    -r "$ROOTFS_DIR" \
-    -w / \
-    /bin/bash -c \
-    'cat /etc/debian_version'
-
-echo
-echo "========================================"
-echo "              BUILD DONE"
-echo "========================================"
-echo
-
-echo "[+] RootFS:"
-echo "    $ROOTFS_DIR"
-echo
-
-echo "[+] Launcher:"
-echo "    $LAUNCHER"
-echo
-
-echo "Start Z-Linux with:"
-echo
-echo "    ./zlinux"
-echo
+# ==============================
