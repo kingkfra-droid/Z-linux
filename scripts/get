@@ -1,79 +1,622 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
-set -e
+set -euo pipefail
+
+# ============================================================
+# Z-Linux Package Manager
+# ============================================================
 
 ZLINUX_NAME="Z-Linux"
-VERSION="0.1.0"
+VERSION="0.2.0"
+
+# Locate Z-Linux root directory.
+#
+# When running from:
+#   ~/Z-linux/scripts/get
+#
+# this resolves to:
+#   ~/Z-linux
+#
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ZLINUX_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+EDITIONS_DIR="$ZLINUX_ROOT/editions"
+
+export DEBIAN_FRONTEND=noninteractive
+
+
+# ============================================================
+# Output helpers
+# ============================================================
+
+info() {
+    echo "[Z-Linux] $*"
+}
+
+success() {
+    echo "[Z-Linux] ✓ $*"
+}
+
+warn() {
+    echo "[Z-Linux] WARNING: $*" >&2
+}
+
+error() {
+    echo "[Z-Linux] ERROR: $*" >&2
+}
+
+die() {
+    error "$*"
+    exit 1
+}
+
+
+# ============================================================
+# Usage
+# ============================================================
 
 usage() {
+    cat <<EOF
+
+$ZLINUX_NAME package manager v$VERSION
+
+Usage:
+
+  get <package>                    Install package(s)
+
+  get install <package>            Install package(s)
+
+  get --update                     Update package lists
+  get update                       Update package lists
+
+  get --upgrade                    Upgrade installed packages
+  get upgrade                      Upgrade installed packages
+
+  get --remove <package>           Remove package
+  get remove <package>             Remove package
+
+  get --search <name>              Search packages
+  get search <name>                Search packages
+
+Profiles:
+
+  get --install-security            Install Security profile
+  get --install-developer           Install Developer profile
+  get --install-documentation       Install Documentation profile
+  get --install-entertainment       Install Entertainment profile
+
+  get --install-all                 Install all profiles
+
+  get --profile <name>              Install a profile
+  get profile <name>                Install a profile
+
+  get --list-profiles               List available profiles
+
+Other:
+
+  get --version                     Show version
+  get --help                        Show this help
+
+Examples:
+
+  get git
+  get python3 python3-pip
+  get install nginx
+
+  get --update
+  get --upgrade
+
+  get --install-security
+  get --install-developer
+  get --install-security --install-developer
+
+  get --profile security
+  get --profile developer
+
+EOF
+}
+
+
+# ============================================================
+# Profile information
+# ============================================================
+
+profile_description() {
+    case "$1" in
+
+        security)
+            echo "Ethical hacking / security research"
+            ;;
+
+        developer)
+            echo "Programming / software development"
+            ;;
+
+        documentation)
+            echo "Documentation / office work"
+            ;;
+
+        entertainment)
+            echo "Video / audio / graphics / multimedia"
+            ;;
+
+        *)
+            echo "Unknown profile"
+            ;;
+
+    esac
+}
+
+
+profile_file() {
+    case "$1" in
+
+        security)
+            echo "$EDITIONS_DIR/security.txt"
+            ;;
+
+        developer)
+            echo "$EDITIONS_DIR/developer.txt"
+            ;;
+
+        documentation)
+            echo "$EDITIONS_DIR/documentation.txt"
+            ;;
+
+        entertainment)
+            echo "$EDITIONS_DIR/entertainment.txt"
+            ;;
+
+        *)
+            return 1
+            ;;
+
+    esac
+}
+
+
+valid_profile() {
+    case "$1" in
+        security|developer|documentation|entertainment)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+
+# ============================================================
+# List profiles
+# ============================================================
+
+list_profiles() {
+
     echo
-    echo "Z-Linux package manager"
+    echo "Z-Linux profiles"
+    echo "================"
     echo
-    echo "Usage:"
-    echo "  get <package>          Install a package"
-    echo "  get --update           Update package lists"
-    echo "  get --upgrade          Upgrade installed packages"
-    echo "  get --remove <package> Remove a package"
-    echo "  get --search <name>    Search for a package"
-    echo "  get --help             Show help"
+
+    for profile in \
+        security \
+        developer \
+        documentation \
+        entertainment
+    do
+        printf "  %-16s %s\n" \
+            "$profile" \
+            "$(profile_description "$profile")"
+    done
+
     echo
 }
 
-if [ "$#" -eq 0 ]; then
+
+# ============================================================
+# Package database
+# ============================================================
+
+update_database() {
+
+    info "Updating package database..."
+
+    apt-get update
+
+    success "Package database updated."
+}
+
+
+# ============================================================
+# Install normal packages
+# ============================================================
+
+install_packages() {
+
+    [ "$#" -gt 0 ] ||
+        die "No package specified."
+
+    info "Installing: $*"
+
+    apt-get update
+
+    apt-get install -y "$@"
+
+    echo
+    success "Installation complete."
+}
+
+
+# ============================================================
+# Install profile
+# ============================================================
+
+install_profile() {
+
+    local profile="$1"
+    local file
+    local packages=()
+    local package
+
+    valid_profile "$profile" ||
+        die "Unknown profile: $profile"
+
+    file="$(profile_file "$profile")"
+
+    [ -f "$file" ] ||
+        die "Profile file not found:
+
+$file"
+
+    echo
+    echo "================================================"
+    echo " Installing Z-Linux profile: $profile"
+    echo "================================================"
+    echo
+    echo "  $(profile_description "$profile")"
+    echo
+    echo "  Profile file:"
+    echo "  $file"
+    echo
+
+    # Read package list.
+    while IFS= read -r package || [ -n "$package" ]; do
+
+        # Remove comments.
+        package="${package%%#*}"
+
+        # Trim leading whitespace.
+        package="${package#"${package%%[![:space:]]*}"}"
+
+        # Trim trailing whitespace.
+        package="${package%"${package##*[![:space:]]}"}"
+
+        # Ignore empty lines.
+        [ -n "$package" ] || continue
+
+        packages+=("$package")
+
+    done < "$file"
+
+
+    [ "${#packages[@]}" -gt 0 ] ||
+        die "Profile '$profile' contains no packages."
+
+
+    # Deduplicate packages.
+    mapfile -t packages < <(
+        printf '%s\n' "${packages[@]}" |
+        sort -u
+    )
+
+
+    info "Packages in profile: ${#packages[@]}"
+    echo
+
+
+    # Update once.
+    apt-get update
+
+
+    local installed=0
+    local skipped=0
+
+
+    for package in "${packages[@]}"; do
+
+        echo
+        echo "------------------------------------------------"
+        echo "[Profile: $profile] Checking: $package"
+        echo "------------------------------------------------"
+
+
+        # Verify package exists in configured repositories.
+        if apt-cache show "$package" >/dev/null 2>&1; then
+
+            info "Installing: $package"
+
+            if apt-get install -y "$package"; then
+
+                success "$package installed."
+                installed=$((installed + 1))
+
+            else
+
+                warn "Failed to install: $package"
+                skipped=$((skipped + 1))
+
+            fi
+
+        else
+
+            warn "Package not available: $package"
+            skipped=$((skipped + 1))
+
+        fi
+
+    done
+
+
+    echo
+    echo "================================================"
+    echo " Profile installation complete"
+    echo "================================================"
+    echo
+    echo "  Profile : $profile"
+    echo "  Installed: $installed"
+    echo "  Skipped  : $skipped"
+    echo
+
+}
+
+
+# ============================================================
+# Install multiple profiles
+# ============================================================
+
+install_profiles() {
+
+    local profiles=("$@")
+
+    [ "${#profiles[@]}" -gt 0 ] ||
+        die "No profiles specified."
+
+
+    for profile in "${profiles[@]}"; do
+        install_profile "$profile"
+    done
+}
+
+
+# ============================================================
+# Upgrade
+# ============================================================
+
+upgrade_system() {
+
+    info "Updating package database..."
+
+    apt-get update
+
+    info "Upgrading installed packages..."
+
+    apt-get upgrade -y
+
+    success "System upgrade complete."
+}
+
+
+# ============================================================
+# Remove
+# ============================================================
+
+remove_packages() {
+
+    [ "$#" -gt 0 ] ||
+        die "Package name required."
+
+    info "Removing: $*"
+
+    apt-get remove -y "$@"
+
+    success "Package removal complete."
+}
+
+
+# ============================================================
+# Search
+# ============================================================
+
+search_packages() {
+
+    [ "$#" -gt 0 ] ||
+        die "Search term required."
+
+    info "Searching for: $*"
+
+    apt-cache search "$*"
+}
+
+
+# ============================================================
+# Argument parsing
+# ============================================================
+
+[ "$#" -gt 0 ] ||
+{
     usage
+    exit 0
+}
+
+
+# ------------------------------------------------------------
+# Special profile flags can be combined.
+# ------------------------------------------------------------
+
+PROFILE_SELECTIONS=()
+NORMAL_ARGS=()
+
+while [ "$#" -gt 0 ]; do
+
+    case "$1" in
+
+        --install-security)
+            PROFILE_SELECTIONS+=("security")
+            ;;
+
+        --install-developer)
+            PROFILE_SELECTIONS+=("developer")
+            ;;
+
+        --install-documentation)
+            PROFILE_SELECTIONS+=("documentation")
+            ;;
+
+        --install-entertainment)
+            PROFILE_SELECTIONS+=("entertainment")
+            ;;
+
+        --install-all)
+            PROFILE_SELECTIONS+=(
+                security
+                developer
+                documentation
+                entertainment
+            )
+            ;;
+
+        --profile|profile)
+
+            [ -n "${2:-}" ] ||
+                die "Profile name required."
+
+            PROFILE_SELECTIONS+=("$2")
+            shift
+            ;;
+
+        --list-profiles)
+            list_profiles
+            exit 0
+            ;;
+
+        *)
+            NORMAL_ARGS+=("$1")
+            ;;
+
+    esac
+
+    shift
+
+done
+
+
+# ============================================================
+# Install selected profiles first
+# ============================================================
+
+if [ "${#PROFILE_SELECTIONS[@]}" -gt 0 ]; then
+
+    # Deduplicate profiles.
+    mapfile -t PROFILE_SELECTIONS < <(
+        printf '%s\n' "${PROFILE_SELECTIONS[@]}" |
+        sort -u
+    )
+
+    install_profiles "${PROFILE_SELECTIONS[@]}"
+
+fi
+
+
+# ============================================================
+# Process normal command
+# ============================================================
+
+if [ "${#NORMAL_ARGS[@]}" -eq 0 ]; then
     exit 0
 fi
 
-case "$1" in
+
+COMMAND="${NORMAL_ARGS[0]}"
+
+
+case "$COMMAND" in
 
     --help|-h)
         usage
         ;;
 
-    --update)
-        echo "[Z-Linux] Updating package database..."
-        apt-get update
+
+    --version|-v)
+        echo "$ZLINUX_NAME $VERSION"
         ;;
 
-    --upgrade)
-        echo "[Z-Linux] Upgrading packages..."
-        apt-get update
-        apt-get upgrade -y
+
+    --update|update)
+
+        update_database
         ;;
 
-    --remove)
-        if [ -z "${2:-}" ]; then
-            echo "[Z-Linux] Error: package name required."
-            exit 1
+
+    --upgrade|upgrade)
+
+        upgrade_system
+        ;;
+
+
+    --remove|remove)
+
+        if [ "${#NORMAL_ARGS[@]}" -lt 2 ]; then
+            die "Package name required."
         fi
 
-        echo "[Z-Linux] Removing: $2"
-        apt-get remove -y "$2"
+        remove_packages "${NORMAL_ARGS[@]:1}"
         ;;
 
-    --search)
-        if [ -z "${2:-}" ]; then
-            echo "[Z-Linux] Error: search term required."
-            exit 1
+
+    --search|search)
+
+        if [ "${#NORMAL_ARGS[@]}" -lt 2 ]; then
+            die "Search term required."
         fi
 
-        echo "[Z-Linux] Searching for: $2"
-        apt-cache search "$2"
+        search_packages "${NORMAL_ARGS[@]:1}"
         ;;
+
+
+    install)
+
+        if [ "${#NORMAL_ARGS[@]}" -lt 2 ]; then
+            die "Package name required."
+        fi
+
+        install_packages "${NORMAL_ARGS[@]:1}"
+        ;;
+
+
+    --install-security|\
+    --install-developer|\
+    --install-documentation|\
+    --install-entertainment|\
+    --install-all)
+
+        # These are handled above.
+        ;;
+
 
     -*)
-        echo "[Z-Linux] Unknown option: $1"
+
+        error "Unknown option: $COMMAND"
+        echo
         usage
         exit 1
         ;;
 
+
     *)
-        echo "[Z-Linux] Installing: $1"
 
-        apt-get update
-        apt-get install -y "$@"
-
-        echo
-        echo "[Z-Linux] Installation complete."
+        # Default behavior:
+        # get python3 git curl
+        install_packages "${NORMAL_ARGS[@]}"
         ;;
+
 esac
