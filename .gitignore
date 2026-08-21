@@ -1,0 +1,13 @@
+# Build cache
+.cache/
+
+# Generated Debian root filesystem
+rootfs/
+
+# Temporary files
+*.tmp
+*.log
+
+# Editor/OS files
+*.swp
+.DS_Store

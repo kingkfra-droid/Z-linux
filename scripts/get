@@ -1,0 +1,79 @@
+#!/data/data/com.termux/files/usr/bin/bash
+
+set -e
+
+ZLINUX_NAME="Z-Linux"
+VERSION="0.1.0"
+
+usage() {
+    echo
+    echo "Z-Linux package manager"
+    echo
+    echo "Usage:"
+    echo "  get <package>          Install a package"
+    echo "  get --update           Update package lists"
+    echo "  get --upgrade          Upgrade installed packages"
+    echo "  get --remove <package> Remove a package"
+    echo "  get --search <name>    Search for a package"
+    echo "  get --help             Show help"
+    echo
+}
+
+if [ "$#" -eq 0 ]; then
+    usage
+    exit 0
+fi
+
+case "$1" in
+
+    --help|-h)
+        usage
+        ;;
+
+    --update)
+        echo "[Z-Linux] Updating package database..."
+        apt-get update
+        ;;
+
+    --upgrade)
+        echo "[Z-Linux] Upgrading packages..."
+        apt-get update
+        apt-get upgrade -y
+        ;;
+
+    --remove)
+        if [ -z "${2:-}" ]; then
+            echo "[Z-Linux] Error: package name required."
+            exit 1
+        fi
+
+        echo "[Z-Linux] Removing: $2"
+        apt-get remove -y "$2"
+        ;;
+
+    --search)
+        if [ -z "${2:-}" ]; then
+            echo "[Z-Linux] Error: search term required."
+            exit 1
+        fi
+
+        echo "[Z-Linux] Searching for: $2"
+        apt-cache search "$2"
+        ;;
+
+    -*)
+        echo "[Z-Linux] Unknown option: $1"
+        usage
+        exit 1
+        ;;
+
+    *)
+        echo "[Z-Linux] Installing: $1"
+
+        apt-get update
+        apt-get install -y "$@"
+
+        echo
+        echo "[Z-Linux] Installation complete."
+        ;;
+esac
