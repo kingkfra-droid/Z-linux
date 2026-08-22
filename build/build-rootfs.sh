@@ -1290,3 +1290,182 @@ EOF
     echo "    zlinux-info"
     echo "    zlinux-update"
 }
+# ============================================================
+# Create Z-Linux launcher
+# ============================================================
+
+create_launcher() {
+
+    echo
+    echo "================================================"
+    echo "             CREATING Z-LINUX LAUNCHER"
+    echo "================================================"
+    echo
+
+    mkdir -p "$ROOT_DIR/launch"
+
+    cat > "$ROOT_DIR/launch/zlinux" <<'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+ROOTFS_DIR="$ROOT_DIR/rootfs"
+
+if [ ! -d "$ROOTFS_DIR" ]; then
+    echo "[ERROR] Z-Linux rootfs not found:"
+    echo "        $ROOTFS_DIR"
+    exit 1
+fi
+
+if ! command -v proot >/dev/null 2>&1; then
+    echo "[ERROR] proot is not installed."
+    echo
+    echo "Install it with:"
+    echo
+    echo "    pkg install proot"
+    exit 1
+fi
+
+PROOT_ARGS=(
+    -0
+    -r "$ROOTFS_DIR"
+    -w /root
+)
+
+# ------------------------------------------------------------
+# Bind Termux DNS
+# ------------------------------------------------------------
+
+if [ -f "$PREFIX/etc/resolv.conf" ]; then
+
+    PROOT_ARGS+=(
+        -b "$PREFIX/etc/resolv.conf:/etc/resolv.conf"
+    )
+
+fi
+
+# ------------------------------------------------------------
+# Bind /dev when available
+# ------------------------------------------------------------
+
+if [ -d /dev ]; then
+
+    PROOT_ARGS+=(
+        -b /dev:/dev
+    )
+
+fi
+
+# ------------------------------------------------------------
+# Expose Termux shared storage when available
+# ------------------------------------------------------------
+
+if [ -d "$HOME/storage" ]; then
+
+    PROOT_ARGS+=(
+        -b "$HOME/storage:/root/storage"
+    )
+
+fi
+
+# ------------------------------------------------------------
+# Start Z-Linux
+# ------------------------------------------------------------
+
+exec proot \
+    "${PROOT_ARGS[@]}" \
+    /bin/bash \
+    --login
+EOF
+
+    chmod +x "$ROOT_DIR/launch/zlinux"
+
+    echo "[+] Launcher created:"
+    echo "    $ROOT_DIR/launch/zlinux"
+}
+
+# ============================================================
+# Create Termux convenience launcher
+# ============================================================
+
+create_termux_launcher() {
+
+    echo
+    echo "[+] Creating Termux launcher..."
+
+    mkdir -p "$ROOT_DIR/bin"
+
+    cat > "$ROOT_DIR/bin/zlinux" <<EOF
+#!/data/data/com.termux/files/usr/bin/bash
+
+exec "$ROOT_DIR/launch/zlinux" "\$@"
+EOF
+
+    chmod +x "$ROOT_DIR/bin/zlinux"
+
+    echo "[+] Termux launcher created:"
+    echo "    $ROOT_DIR/bin/zlinux"
+}
+
+# ============================================================
+# Cleanup temporary build files
+# ============================================================
+
+cleanup_build() {
+
+    echo
+    echo "================================================"
+    echo "               BUILD CLEANUP"
+    echo "================================================"
+    echo
+
+    if [ "${ZLINUX_KEEP_WORK:-0}" = "1" ]; then
+
+        echo "[+] Keeping temporary build files."
+        echo "    $WORK_DIR"
+
+        return 0
+    fi
+
+    echo "[+] Removing temporary extraction files..."
+
+    rm -rf "$WORK_DIR/extract"
+    rm -rf "$DEBOOTSTRAP_DIR"
+    rm -rf "$DEBOOTSTRAP_RUNTIME"
+
+    echo "[+] Temporary files cleaned."
+}
+
+# ============================================================
+# Final rootfs cleanup
+# ============================================================
+
+cleanup_rootfs() {
+
+    echo
+    echo "[+] Cleaning Debian rootfs..."
+
+    rootfs_proot_args
+
+    proot \
+        "${PROOT_ROOT_ARGS[@]}" \
+        /bin/bash -c '
+set +e
+
+rm -rf /var/lib/apt/lists/*
+rm -rf /var/cache/apt/archives/*.deb
+rm -rf /tmp/*
+
+mkdir -p /tmp
+chmod 1777 /tmp
+
+# Remove machine-specific files that should not be
+# persisted into a portable rootfs.
+rm -f /etc/machine-id
+
+echo "[+] Rootfs cleanup complete."
+'
+
+    echo "[+] Rootfs cleanup finished."
+}
