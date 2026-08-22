@@ -109,3 +109,95 @@ echo "  Debian architecture : $ARCH"
 echo "  Debian suite        : $DEBIAN_SUITE"
 echo "------------------------------------------------"
 echo
+# ============================================================
+# Dependency checks
+# ============================================================
+
+echo "[+] Checking Termux dependencies..."
+
+for cmd in bash wget file proot; do
+    if ! command_exists "$cmd"; then
+        die "Missing command: $cmd
+
+Install it with:
+
+    pkg install $cmd"
+    fi
+done
+
+if command_exists bsdtar; then
+    ARCHIVER="bsdtar"
+elif command_exists ar && command_exists tar; then
+    ARCHIVER="ar"
+else
+    die "No supported archive extractor found.
+
+Install bsdtar with:
+
+    pkg install bsdtar"
+fi
+
+echo "[+] Dependencies OK."
+echo
+
+# ============================================================
+# Profile definitions
+# ============================================================
+
+PROFILE_SECURITY="security"
+PROFILE_DEVELOPER="developer"
+PROFILE_DOCUMENTATION="documentation"
+PROFILE_ENTERTAINMENT="entertainment"
+
+SELECTED_PROFILES=()
+
+profile_description() {
+    case "$1" in
+        security)
+            echo "Ethical hacking, penetration testing and security research"
+            ;;
+        developer)
+            echo "Programming, software engineering and development"
+            ;;
+        documentation)
+            echo "Office work, technical writing and documentation"
+            ;;
+        entertainment)
+            echo "Video editing, graphics, audio and multimedia"
+            ;;
+        *)
+            echo "Unknown profile"
+            ;;
+    esac
+}
+
+profile_file() {
+    case "$1" in
+        security)
+            echo "$EDITIONS_DIR/security.txt"
+            ;;
+        developer)
+            echo "$EDITIONS_DIR/developer.txt"
+            ;;
+        documentation)
+            echo "$EDITIONS_DIR/documentation.txt"
+            ;;
+        entertainment)
+            echo "$EDITIONS_DIR/entertainment.txt"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+valid_profile() {
+    case "$1" in
+        security|developer|documentation|entertainment)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
