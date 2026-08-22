@@ -628,4 +628,129 @@ show_installation_plan() {
     esac
 
     echo
+}# ============================================================
+# Create Debian rootfs
+# ============================================================
+
+create_rootfs() {
+
+    echo
+    echo "================================================"
+    echo "              CREATING DEBIAN ROOTFS"
+    echo "================================================"
+    echo
+
+    # --------------------------------------------------------
+    # Check for an existing rootfs
+    # --------------------------------------------------------
+
+    if [ -d "$ROOTFS_DIR/usr" ] ||
+       [ -d "$ROOTFS_DIR/etc" ]; then
+
+        if [ "${ZLINUX_FORCE:-0}" != "1" ]; then
+
+            die "Existing rootfs detected.
+
+To rebuild it, use:
+
+    ZLINUX_FORCE=1 ./build/build-rootfs.sh"
+
+        fi
+
+        echo "[+] Removing existing rootfs..."
+
+        rm -rf "$ROOTFS_DIR"
+
+    fi
+
+    mkdir -p "$ROOTFS_DIR"
+
+    echo "[+] Debian architecture : $ARCH"
+    echo "[+] Debian suite        : $DEBIAN_SUITE"
+    echo "[+] Debian mirror       : $DEBIAN_MIRROR"
+    echo
+
+    # --------------------------------------------------------
+    # First stage
+    # --------------------------------------------------------
+
+    echo "[+] Starting Debian first stage..."
+    echo
+
+    proot \
+        -0 \
+        -r "$DEBOOTSTRAP_RUNTIME" \
+        -b "$ROOTFS_DIR:/target" \
+        -w / \
+        /usr/sbin/debootstrap \
+        --foreign \
+        --arch="$ARCH" \
+        --variant=minbase \
+        "$DEBIAN_SUITE" \
+        /target \
+        "$DEBIAN_MIRROR"
+
+    if [ ! -f "$ROOTFS_DIR/debootstrap/debootstrap" ]; then
+
+        die "Debian first stage failed."
+
+    fi
+
+    echo
+    echo "[+] Debian first stage complete."
+
+    # --------------------------------------------------------
+    # Second stage
+    # --------------------------------------------------------
+
+    echo
+    echo "[+] Starting Debian second stage..."
+    echo
+
+    proot \
+        -0 \
+        -r "$ROOTFS_DIR" \
+        -w / \
+        /debootstrap/debootstrap \
+        --second-stage
+
+    echo
+    echo "[+] Debian second stage complete."
+}
+
+# ============================================================
+# Build rootfs proot arguments
+# ============================================================
+
+rootfs_proot_args() {
+
+    PROOT_ROOT_ARGS=(
+        -0
+        -r "$ROOTFS_DIR"
+        -w /
+    )
+
+    # --------------------------------------------------------
+    # Android / Termux /dev
+    # --------------------------------------------------------
+
+    if [ -d /dev ]; then
+
+        PROOT_ROOT_ARGS+=(
+            -b /dev:/dev
+        )
+
+    fi
+
+    # --------------------------------------------------------
+    # Termux DNS configuration
+    # --------------------------------------------------------
+
+    if [ -f "$PREFIX/etc/resolv.conf" ]; then
+
+        PROOT_ROOT_ARGS+=(
+            -b "$PREFIX/etc/resolv.conf:/etc/resolv.conf"
+        )
+
+    fi
 }
