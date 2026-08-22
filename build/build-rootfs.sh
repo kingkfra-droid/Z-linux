@@ -754,3 +754,114 @@ rootfs_proot_args() {
 
     fi
 }
+# ============================================================
+# Configure Debian
+# ============================================================
+
+configure_debian() {
+
+    echo
+    echo "================================================"
+    echo "              CONFIGURING DEBIAN"
+    echo "================================================"
+    echo
+
+    rootfs_proot_args
+
+    mkdir -p "$ROOTFS_DIR/etc/apt"
+
+    # --------------------------------------------------------
+    # APT sources
+    # --------------------------------------------------------
+
+    cat > "$ROOTFS_DIR/etc/apt/sources.list" <<EOF
+deb $DEBIAN_MIRROR $DEBIAN_SUITE main
+deb $DEBIAN_MIRROR ${DEBIAN_SUITE}-updates main
+deb https://security.debian.org/debian-security ${DEBIAN_SUITE}-security main
+EOF
+
+    # --------------------------------------------------------
+    # Hostname
+    # --------------------------------------------------------
+
+    echo "zlinux" > "$ROOTFS_DIR/etc/hostname"
+
+    # --------------------------------------------------------
+    # Hosts file
+    # --------------------------------------------------------
+
+    cat > "$ROOTFS_DIR/etc/hosts" <<EOF
+127.0.0.1 localhost
+127.0.1.1 zlinux
+::1 localhost ip6-localhost ip6-loopback
+EOF
+
+    # --------------------------------------------------------
+    # DNS fallback
+    # --------------------------------------------------------
+
+    cat > "$ROOTFS_DIR/etc/resolv.conf" <<EOF
+nameserver 1.1.1.1
+nameserver 8.8.8.8
+EOF
+
+    echo "[+] Installing base Debian packages..."
+    echo
+
+    proot \
+        "${PROOT_ROOT_ARGS[@]}" \
+        /bin/bash -c '
+set -e
+
+export DEBIAN_FRONTEND=noninteractive
+
+echo "[APT] Updating package indexes..."
+
+apt-get update
+
+echo
+echo "[APT] Installing base packages..."
+
+apt-get install -y \
+    bash \
+    coreutils \
+    procps \
+    iproute2 \
+    iputils-ping \
+    net-tools \
+    curl \
+    wget \
+    ca-certificates \
+    nano \
+    vim-tiny \
+    less \
+    sudo \
+    passwd \
+    locales \
+    tzdata \
+    apt-utils
+
+echo
+echo "[APT] Configuring locale..."
+
+echo "LANG=en_US.UTF-8" > /etc/default/locale
+
+if [ -f /etc/locale.gen ]; then
+
+    sed -i \
+        "s/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/" \
+        /etc/locale.gen || true
+
+fi
+
+if command -v locale-gen >/dev/null 2>&1; then
+    locale-gen || true
+fi
+
+echo
+echo "[APT] Base Debian configuration complete."
+'
+
+    echo
+    echo "[+] Debian configuration complete."
+}
