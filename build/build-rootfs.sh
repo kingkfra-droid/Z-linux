@@ -1031,4 +1031,262 @@ rm -rf /var/lib/apt/lists/*
 
     echo
     echo "[+] Profile packages processed."
+}# ============================================================
+# Create Z-Linux configuration
+# ============================================================
+
+create_zlinux_config() {
+
+    echo
+    echo "================================================"
+    echo "          CREATING Z-LINUX CONFIGURATION"
+    echo "================================================"
+    echo
+
+    mkdir -p \
+        "$ROOTFS_DIR/etc/zlinux" \
+        "$ROOTFS_DIR/var/lib/zlinux"
+
+    cat > "$ROOTFS_DIR/etc/zlinux/zlinux.conf" <<EOF
+# Z-Linux configuration
+
+ZLINUX_NAME="Z-Linux"
+ZLINUX_VERSION="1.0"
+
+ZLINUX_ARCH="$ARCH"
+ZLINUX_DEBIAN_SUITE="$DEBIAN_SUITE"
+ZLINUX_MIRROR="$DEBIAN_MIRROR"
+
+ZLINUX_CPU_CORES="$CPU_CORES"
+ZLINUX_MEMORY_MB="$MEMORY_MB"
+
+ZLINUX_HW_AUTO="${ZLINUX_HW_AUTO:-1}"
+EOF
+
+    {
+        echo "# Selected Z-Linux profiles"
+        for profile in "${SELECTED_PROFILES[@]}"; do
+            echo "$profile"
+        done
+    } > "$ROOTFS_DIR/etc/zlinux/profiles"
+
+    {
+        echo "# Z-Linux package manifest"
+        printf '%s\n' "${PROFILE_PACKAGES[@]}"
+    } > "$ROOTFS_DIR/etc/zlinux/packages"
+
+    cat > "$ROOTFS_DIR/etc/zlinux/build-info" <<EOF
+ZLINUX_BUILD_DATE="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+ZLINUX_ARCH="$ARCH"
+ZLINUX_SUITE="$DEBIAN_SUITE"
+ZLINUX_DEBOOTSTRAP_VERSION="$DEBOOTSTRAP_VERSION"
+ZLINUX_CPU_CORES="$CPU_CORES"
+ZLINUX_MEMORY_MB="$MEMORY_MB"
+EOF
+
+    echo "[+] Z-Linux configuration created."
+}
+
+# ============================================================
+# Create default Z-Linux user
+# ============================================================
+
+create_zlinux_user() {
+
+    echo
+    echo "================================================"
+    echo "             CREATING Z-LINUX USER"
+    echo "================================================"
+    echo
+
+    rootfs_proot_args
+
+    proot \
+        "${PROOT_ROOT_ARGS[@]}" \
+        /bin/bash -c '
+set -e
+
+USERNAME="${ZLINUX_USER:-zlinux}"
+
+if ! id "$USERNAME" >/dev/null 2>&1; then
+
+    useradd \
+        -m \
+        -s /bin/bash \
+        "$USERNAME"
+
+fi
+
+mkdir -p "/home/$USERNAME"
+
+if command -v chown >/dev/null 2>&1; then
+    chown -R "$USERNAME:$USERNAME" \
+        "/home/$USERNAME" 2>/dev/null || true
+fi
+
+if command -v usermod >/dev/null 2>&1; then
+    usermod -aG sudo "$USERNAME" 2>/dev/null || true
+fi
+
+# Rootless Z-Linux does not need a password for the default user.
+passwd -d "$USERNAME" 2>/dev/null || true
+
+echo "$USERNAME" > /etc/zlinux/default-user
+
+echo "[+] User created: $USERNAME"
+'
+
+    echo "[+] Default Z-Linux user configured."
+}
+
+# ============================================================
+# Configure shell environment
+# ============================================================
+
+configure_shell_environment() {
+
+    echo
+    echo "================================================"
+    echo "            CONFIGURING SHELL ENVIRONMENT"
+    echo "================================================"
+    echo
+
+    mkdir -p "$ROOTFS_DIR/etc/profile.d"
+
+    cat > "$ROOTFS_DIR/etc/profile.d/zlinux.sh" <<'EOF'
+# Z-Linux shell environment
+
+export ZLINUX=1
+export ZLINUX_CONFIG="/etc/zlinux/zlinux.conf"
+
+export PATH="/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin:$PATH"
+
+export EDITOR="${EDITOR:-nano}"
+
+alias ll='ls -lah'
+alias la='ls -A'
+alias l='ls -CF'
+
+if [ -x /usr/local/bin/get ]; then
+    export ZLINUX_GET="/usr/local/bin/get"
+fi
+EOF
+
+    cat > "$ROOTFS_DIR/etc/bash.bashrc" <<'EOF'
+# Z-Linux interactive shell
+
+if [ -n "$PS1" ]; then
+
+    export PATH="/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin:$PATH"
+
+    alias ll='ls -lah'
+    alias la='ls -A'
+    alias l='ls -CF'
+
+    echo
+    echo "---------------------------------------------"
+    echo "                 Z-LINUX"
+    echo "---------------------------------------------"
+    echo " Package manager: get"
+    echo " Information:     zlinux-info"
+    echo " Update system:   zlinux-update"
+    echo "---------------------------------------------"
+    echo
+
+fi
+EOF
+
+    echo "[+] Shell environment configured."
+}
+
+# ============================================================
+# Create Z-Linux helper commands
+# ============================================================
+
+create_rootfs_helpers() {
+
+    echo
+    echo "================================================"
+    echo "              CREATING Z-LINUX HELPERS"
+    echo "================================================"
+    echo
+
+    mkdir -p \
+        "$ROOTFS_DIR/usr/local/bin" \
+        "$ROOTFS_DIR/usr/local/sbin"
+
+    # --------------------------------------------------------
+    # zlinux-info
+    # --------------------------------------------------------
+
+    cat > "$ROOTFS_DIR/usr/local/bin/zlinux-info" <<'EOF'
+#!/bin/bash
+
+echo
+echo "=============================================="
+echo "                 Z-LINUX"
+echo "=============================================="
+echo
+
+if [ -f /etc/zlinux/zlinux.conf ]; then
+    cat /etc/zlinux/zlinux.conf
+fi
+
+echo
+echo "Profiles:"
+echo "----------------------------------------------"
+
+if [ -f /etc/zlinux/profiles ]; then
+    grep -v '^#' /etc/zlinux/profiles || true
+fi
+
+echo
+echo "Architecture:"
+dpkg --print-architecture 2>/dev/null || true
+
+echo
+echo "Kernel:"
+uname -a
+
+echo
+EOF
+
+    chmod +x "$ROOTFS_DIR/usr/local/bin/zlinux-info"
+
+    # --------------------------------------------------------
+    # zlinux-update
+    # --------------------------------------------------------
+
+    cat > "$ROOTFS_DIR/usr/local/bin/zlinux-update" <<'EOF'
+#!/bin/bash
+
+set -e
+
+echo
+echo "[+] Updating Z-Linux..."
+echo
+
+apt-get update
+
+echo
+echo "[+] Upgrading installed packages..."
+echo
+
+apt-get upgrade -y
+
+echo
+echo "[+] Cleaning package cache..."
+echo
+
+apt-get clean
+
+echo
+echo "[+] Z-Linux update complete."
+EOF
+
+    chmod +x "$ROOTFS_DIR/usr/local/bin/zlinux-update"
+
+    echo "[+] Helper commands created:"
+    echo "    zlinux-info"
+    echo "    zlinux-update"
 }
