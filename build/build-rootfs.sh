@@ -865,3 +865,78 @@ echo "[APT] Base Debian configuration complete."
     echo
     echo "[+] Debian configuration complete."
 }
+# ============================================================
+# Install Z-Linux "get"
+# ============================================================
+
+install_get() {
+
+    echo
+    echo "================================================"
+    echo "          INSTALLING Z-LINUX PACKAGE MANAGER"
+    echo "================================================"
+    echo
+
+    if [ ! -f "$GET_SCRIPT" ]; then
+        die "Z-Linux get script not found:
+
+$GET_SCRIPT"
+    fi
+
+    mkdir -p "$ROOTFS_DIR/usr/local/bin"
+
+    cp \
+        "$GET_SCRIPT" \
+        "$ROOTFS_DIR/usr/local/bin/get"
+
+    chmod +x \
+        "$ROOTFS_DIR/usr/local/bin/get"
+
+    echo "[+] Installed:"
+    echo "    /usr/local/bin/get"
+}
+
+# ============================================================
+# Configure Z-Linux "get"
+# ============================================================
+
+configure_get() {
+
+    echo
+    echo "================================================"
+    echo "             CONFIGURING Z-LINUX GET"
+    echo "================================================"
+    echo
+
+    if [ ! -x "$ROOTFS_DIR/usr/local/bin/get" ]; then
+        die "Z-Linux get is not executable."
+    fi
+
+    rootfs_proot_args
+
+    proot \
+        "${PROOT_ROOT_ARGS[@]}" \
+        /bin/bash -c '
+set -e
+
+GET="/usr/local/bin/get"
+
+chmod +x "$GET"
+
+# Make get available through the normal system PATH.
+ln -sf "$GET" /usr/bin/get
+
+echo "[GET] Testing package manager..."
+
+if "$GET" help >/dev/null 2>&1; then
+    echo "[GET] Command test successful."
+else
+    echo "[GET] Help command returned a non-zero status."
+    echo "[GET] The command was installed, but its implementation"
+    echo "[GET] will be validated during the final rootfs test."
+fi
+'
+
+    echo
+    echo "[+] Z-Linux get configured."
+}
