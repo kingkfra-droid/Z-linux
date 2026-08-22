@@ -487,3 +487,145 @@ hardware_allows_package() {
 
     return 0
 }
+# ============================================================
+# Collect packages from a profile
+# ============================================================
+
+collect_profile_packages() {
+
+    local profile="$1"
+    local file=""
+    local package=""
+
+    file="$(profile_file "$profile")"
+
+    if [ ! -f "$file" ]; then
+        die "Profile file missing:
+
+$file"
+    fi
+
+    while IFS= read -r package || [ -n "$package" ]; do
+
+        # Remove comments.
+        package="${package%%#*}"
+
+        # Remove leading whitespace.
+        package="${package#"${package%%[![:space:]]*}"}"
+
+        # Remove trailing whitespace.
+        package="${package%"${package##*[![:space:]]}"}"
+
+        # Ignore empty lines.
+        [ -n "$package" ] || continue
+
+        if hardware_allows_package "$package"; then
+
+            PROFILE_PACKAGES+=("$package")
+
+        else
+
+            echo "[HW] Skipping heavy package: $package"
+
+        fi
+
+    done < "$file"
+}
+
+# ============================================================
+# Resolve selected profiles
+# ============================================================
+
+resolve_profiles() {
+
+    PROFILE_PACKAGES=()
+
+    echo "================================================"
+    echo "             PROFILE RESOLUTION"
+    echo "================================================"
+    echo
+
+    for profile in "${SELECTED_PROFILES[@]}"; do
+
+        echo "[+] $profile"
+        echo "    $(profile_description "$profile")"
+
+        collect_profile_packages "$profile"
+
+        echo
+
+    done
+
+    # --------------------------------------------------------
+    # Remove duplicate packages
+    # --------------------------------------------------------
+
+    if [ "${#PROFILE_PACKAGES[@]}" -gt 0 ]; then
+
+        mapfile -t PROFILE_PACKAGES < <(
+            printf '%s\n' "${PROFILE_PACKAGES[@]}" |
+            sort -u
+        )
+
+    fi
+
+    echo "[+] Packages selected: ${#PROFILE_PACKAGES[@]}"
+    echo
+
+}
+
+# ============================================================
+# Show installation plan
+# ============================================================
+
+show_installation_plan() {
+
+    echo "================================================"
+    echo "              INSTALLATION PLAN"
+    echo "================================================"
+    echo
+
+    echo "Profiles:"
+
+    for profile in "${SELECTED_PROFILES[@]}"; do
+        echo "  [+] $profile"
+    done
+
+    echo
+    echo "Packages: ${#PROFILE_PACKAGES[@]}"
+    echo
+
+    if [ "${#PROFILE_PACKAGES[@]}" -gt 0 ]; then
+
+        for package in "${PROFILE_PACKAGES[@]}"; do
+            echo "  - $package"
+        done
+
+        echo
+
+    fi
+
+    if [ "${ZLINUX_AUTO_CONFIRM:-0}" = "1" ]; then
+        return 0
+    fi
+
+    if [ "${ZLINUX_NONINTERACTIVE:-0}" = "1" ]; then
+        return 0
+    fi
+
+    printf "Continue with this configuration? [Y/n]: "
+    read -r answer
+
+    case "${answer:-Y}" in
+
+        n|N|no|NO)
+
+            echo
+            echo "[Z-Linux] Installation cancelled."
+            exit 0
+            ;;
+
+    esac
+
+    echo
+}
