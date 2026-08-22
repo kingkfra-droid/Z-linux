@@ -339,3 +339,151 @@ select_profiles() {
         die "No profiles selected."
     fi
 }
+# ============================================================
+# Hardware detection
+# ============================================================
+
+detect_hardware() {
+
+    CPU_CORES="$(
+        getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1
+    )"
+
+    case "$CPU_CORES" in
+        ''|*[!0-9]*)
+            CPU_CORES=1
+            ;;
+    esac
+
+    if [ -r /proc/meminfo ]; then
+
+        MEMORY_MB="$(
+            awk '
+                /MemTotal:/ {
+                    printf "%d", $2 / 1024
+                    exit
+                }
+            ' /proc/meminfo
+        )"
+
+    else
+        MEMORY_MB=0
+    fi
+
+    case "$MEMORY_MB" in
+        ''|*[!0-9]*)
+            MEMORY_MB=0
+            ;;
+    esac
+
+    if command_exists df; then
+
+        STORAGE_AVAILABLE="$(
+            df -Pm "$ROOT_DIR" 2>/dev/null |
+            awk 'NR==2 {print $4}'
+        )"
+
+    else
+        STORAGE_AVAILABLE=0
+    fi
+
+    if [ -z "$STORAGE_AVAILABLE" ]; then
+        STORAGE_AVAILABLE=0
+    fi
+
+    echo "================================================"
+    echo "             HARDWARE DETECTION"
+    echo "================================================"
+    echo
+    echo "  Architecture : ${ZLINUX_ARCH:-unknown}"
+    echo "  CPU cores    : $CPU_CORES"
+    echo "  Memory       : ${MEMORY_MB} MB"
+    echo "  Free storage : ${STORAGE_AVAILABLE} MB"
+    echo
+
+    if [ "$MEMORY_MB" -gt 0 ] &&
+       [ "$MEMORY_MB" -lt 2048 ]; then
+
+        echo "[!] Low-memory device detected."
+        echo "[!] Heavy packages may be skipped."
+        echo
+    fi
+}
+
+# ============================================================
+# Hardware-aware package filter
+# ============================================================
+
+hardware_allows_package() {
+
+    local package="$1"
+
+    if [ "${ZLINUX_HW_AUTO:-1}" = "0" ]; then
+        return 0
+    fi
+
+    # --------------------------------------------------------
+    # Devices with less than 2 GB RAM
+    # --------------------------------------------------------
+
+    if [ "$MEMORY_MB" -gt 0 ] &&
+       [ "$MEMORY_MB" -lt 2048 ]; then
+
+        case "$package" in
+
+            blender)
+                return 1
+                ;;
+
+            kdenlive)
+                return 1
+                ;;
+
+            obs-studio)
+                return 1
+                ;;
+
+            libreoffice)
+                return 1
+                ;;
+
+            docker.io)
+                return 1
+                ;;
+
+            docker-compose)
+                return 1
+                ;;
+
+        esac
+    fi
+
+    # --------------------------------------------------------
+    # Single-core devices
+    # --------------------------------------------------------
+
+    if [ "$CPU_CORES" -lt 2 ]; then
+
+        case "$package" in
+
+            blender)
+                return 1
+                ;;
+
+            kdenlive)
+                return 1
+                ;;
+
+            obs-studio)
+                return 1
+                ;;
+
+            docker.io)
+                return 1
+                ;;
+
+        esac
+    fi
+
+    return 0
+}
