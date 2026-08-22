@@ -940,3 +940,95 @@ fi
     echo
     echo "[+] Z-Linux get configured."
 }
+# ============================================================
+# Install selected profile packages
+# ============================================================
+
+install_profile_packages() {
+
+    echo
+    echo "================================================"
+    echo "          INSTALLING PROFILE PACKAGES"
+    echo "================================================"
+    echo
+
+    if [ "${#PROFILE_PACKAGES[@]}" -eq 0 ]; then
+        echo "[!] No profile packages selected."
+        return 0
+    fi
+
+    rootfs_proot_args
+
+    mkdir -p "$ROOTFS_DIR/tmp"
+
+    printf '%s\n' "${PROFILE_PACKAGES[@]}" \
+        > "$ROOTFS_DIR/tmp/zlinux-packages.txt"
+
+    echo "[+] Packages to install:"
+    echo
+
+    while IFS= read -r package; do
+        [ -n "$package" ] && echo "    $package"
+    done < "$ROOTFS_DIR/tmp/zlinux-packages.txt"
+
+    echo
+
+    proot \
+        "${PROOT_ROOT_ARGS[@]}" \
+        /bin/bash -c '
+set -e
+
+export DEBIAN_FRONTEND=noninteractive
+
+PACKAGE_FILE="/tmp/zlinux-packages.txt"
+
+if [ ! -s "$PACKAGE_FILE" ]; then
+    echo "[!] Package list is empty."
+    exit 0
+fi
+
+echo "[+] Refreshing Debian package indexes..."
+
+apt-get update
+
+echo
+echo "[+] Installing profile packages..."
+
+while IFS= read -r package; do
+
+    [ -n "$package" ] || continue
+
+    echo
+    echo "------------------------------------------------"
+    echo "[GET] Installing: $package"
+    echo "------------------------------------------------"
+
+    if apt-cache show "$package" >/dev/null 2>&1; then
+
+        apt-get install -y \
+            --no-install-recommends \
+            "$package"
+
+    else
+
+        echo "[WARN] Package not found in configured repositories:"
+        echo "       $package"
+        echo "[WARN] Continuing with remaining packages."
+
+    fi
+
+done < "$PACKAGE_FILE"
+
+echo
+echo "[+] Profile package installation finished."
+
+apt-get clean
+
+rm -rf /var/lib/apt/lists/*
+'
+
+    rm -f "$ROOTFS_DIR/tmp/zlinux-packages.txt"
+
+    echo
+    echo "[+] Profile packages processed."
+}
