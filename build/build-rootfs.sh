@@ -1469,3 +1469,267 @@ echo "[+] Rootfs cleanup complete."
 
     echo "[+] Rootfs cleanup finished."
 }
+# ============================================================
+# Validate Z-Linux rootfs
+# ============================================================
+
+validate_rootfs() {
+
+    echo
+    echo "================================================"
+    echo "             VALIDATING Z-LINUX"
+    echo "================================================"
+    echo
+
+    local failed=0
+
+    # --------------------------------------------------------
+    # Required directories
+    # --------------------------------------------------------
+
+    for directory in \
+        "$ROOTFS_DIR/bin" \
+        "$ROOTFS_DIR/etc" \
+        "$ROOTFS_DIR/usr" \
+        "$ROOTFS_DIR/var" \
+        "$ROOTFS_DIR/tmp"
+    do
+
+        if [ ! -d "$directory" ]; then
+
+            echo "[FAIL] Missing directory:"
+            echo "       $directory"
+
+            failed=1
+
+        fi
+
+    done
+
+    # --------------------------------------------------------
+    # Required files
+    # --------------------------------------------------------
+
+    for file in \
+        "$ROOTFS_DIR/etc/hostname" \
+        "$ROOTFS_DIR/etc/hosts" \
+        "$ROOTFS_DIR/etc/apt/sources.list" \
+        "$ROOTFS_DIR/etc/zlinux/zlinux.conf" \
+        "$ROOTFS_DIR/etc/zlinux/profiles" \
+        "$ROOTFS_DIR/usr/local/bin/get" \
+        "$ROOTFS_DIR/usr/local/bin/zlinux-info"
+    do
+
+        if [ ! -f "$file" ]; then
+
+            echo "[FAIL] Missing file:"
+            echo "       $file"
+
+            failed=1
+
+        fi
+
+    done
+
+    # --------------------------------------------------------
+    # Test rootfs shell
+    # --------------------------------------------------------
+
+    if [ "$failed" -eq 0 ]; then
+
+        rootfs_proot_args
+
+        echo
+        echo "[+] Testing rootfs shell..."
+
+        if proot \
+            "${PROOT_ROOT_ARGS[@]}" \
+            /bin/bash -c '
+                set -e
+                test -x /bin/bash
+                test -x /usr/local/bin/get
+                echo "[ROOTFS] shell OK"
+                echo "[ROOTFS] architecture: $(dpkg --print-architecture 2>/dev/null || echo unknown)"
+            '
+        then
+
+            echo "[+] Rootfs shell test passed."
+
+        else
+
+            echo "[FAIL] Rootfs shell test failed."
+
+            failed=1
+
+        fi
+
+    fi
+
+    # --------------------------------------------------------
+    # Final result
+    # --------------------------------------------------------
+
+    echo
+
+    if [ "$failed" -ne 0 ]; then
+
+        die "Z-Linux rootfs validation failed."
+
+    fi
+
+    echo "[+] Z-Linux rootfs validation successful."
+}
+
+# ============================================================
+# Display final build information
+# ============================================================
+
+show_build_summary() {
+
+    echo
+    echo "================================================"
+    echo "             Z-LINUX BUILD COMPLETE"
+    echo "================================================"
+    echo
+
+    echo "Rootfs:"
+    echo "    $ROOTFS_DIR"
+
+    echo
+    echo "Architecture:"
+    echo "    $ARCH"
+
+    echo
+    echo "Profiles:"
+
+    for profile in "${SELECTED_PROFILES[@]}"; do
+        echo "    [+] $profile"
+    done
+
+    echo
+    echo "Packages installed:"
+    echo "    ${#PROFILE_PACKAGES[@]}"
+
+    echo
+    echo "Launcher:"
+    echo "    $ROOT_DIR/launch/zlinux"
+
+    echo
+    echo "Start Z-Linux with:"
+    echo
+    echo "    $ROOT_DIR/launch/zlinux"
+
+    echo
+    echo "Or:"
+    echo
+    echo "    $ROOT_DIR/bin/zlinux"
+
+    echo
+    echo "Useful commands inside Z-Linux:"
+    echo
+    echo "    zlinux-info"
+    echo "    zlinux-update"
+    echo "    get"
+    echo
+
+    echo "================================================"
+}
+
+# ============================================================
+# Main build process
+# ============================================================
+
+main() {
+
+    echo
+    echo "[Z-Linux] Starting build..."
+    echo
+
+    # --------------------------------------------------------
+    # Initial setup
+    # --------------------------------------------------------
+
+    prepare_directories
+
+    # --------------------------------------------------------
+    # Hardware and profiles
+    # --------------------------------------------------------
+
+    detect_hardware
+
+    select_profiles
+
+    resolve_profiles
+
+    show_installation_plan
+
+    # --------------------------------------------------------
+    # Debian bootstrap
+    # --------------------------------------------------------
+
+    download_debootstrap
+
+    extract_debootstrap
+
+    prepare_debootstrap_runtime
+
+    create_rootfs
+
+    # --------------------------------------------------------
+    # Debian configuration
+    # --------------------------------------------------------
+
+    configure_debian
+
+    # --------------------------------------------------------
+    # Z-Linux components
+    # --------------------------------------------------------
+
+    install_get
+
+    configure_get
+
+    install_profile_packages
+
+    # --------------------------------------------------------
+    # Z-Linux environment
+    # --------------------------------------------------------
+
+    create_zlinux_config
+
+    create_zlinux_user
+
+    configure_shell_environment
+
+    create_rootfs_helpers
+
+    # --------------------------------------------------------
+    # Launchers
+    # --------------------------------------------------------
+
+    create_launcher
+
+    create_termux_launcher
+
+    # --------------------------------------------------------
+    # Cleanup and validation
+    # --------------------------------------------------------
+
+    cleanup_rootfs
+
+    cleanup_build
+
+    validate_rootfs
+
+    # --------------------------------------------------------
+    # Done
+    # --------------------------------------------------------
+
+    show_build_summary
+}
+
+# ============================================================
+# Script entry point
+# ============================================================
+
+main "$@"
