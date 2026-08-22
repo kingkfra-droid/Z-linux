@@ -201,3 +201,141 @@ valid_profile() {
             ;;
     esac
 }
+# ============================================================
+# Profile selection
+# ============================================================
+
+select_profiles() {
+
+    echo "================================================"
+    echo "            Z-LINUX PROFILE SETUP"
+    echo "================================================"
+    echo
+    echo "Choose what this Z-Linux installation will be"
+    echo "optimized for."
+    echo
+    echo "You can select multiple profiles."
+    echo
+    echo "  1) Security"
+    echo "     Ethical hacking / security research"
+    echo
+    echo "  2) Developer"
+    echo "     Programming / software development"
+    echo
+    echo "  3) Documentation"
+    echo "     Office / technical documentation"
+    echo
+    echo "  4) Entertainment"
+    echo "     Video / audio / graphics / multimedia"
+    echo
+    echo "  5) All profiles"
+    echo
+    echo "------------------------------------------------"
+    echo
+
+    local input=""
+    local item=""
+    local selected=""
+    local exists=0
+
+    if [ -n "${ZLINUX_PROFILES:-}" ]; then
+
+        input="$ZLINUX_PROFILES"
+
+        echo "[+] Profiles supplied through ZLINUX_PROFILES:"
+        echo "    $input"
+        echo
+
+    elif [ "${ZLINUX_NONINTERACTIVE:-0}" = "1" ]; then
+
+        input="developer"
+
+        echo "[+] Non-interactive mode."
+        echo "[+] Default profile: developer"
+        echo
+
+    else
+
+        while true; do
+
+            printf "Select profile(s) [1-5, e.g. 1,2]: "
+            read -r input
+
+            if [ -n "$input" ]; then
+                break
+            fi
+
+            echo
+            echo "[!] Please select at least one profile."
+
+        done
+    fi
+
+    input="$(printf '%s' "$input" | tr ',' ' ')"
+
+    for item in $input; do
+
+        case "$item" in
+
+            1)
+                item="security"
+                ;;
+
+            2)
+                item="developer"
+                ;;
+
+            3)
+                item="documentation"
+                ;;
+
+            4)
+                item="entertainment"
+                ;;
+
+            5|all)
+                SELECTED_PROFILES=(
+                    security
+                    developer
+                    documentation
+                    entertainment
+                )
+                return 0
+                ;;
+
+            security|developer|documentation|entertainment)
+                ;;
+
+            *)
+                die "Unknown profile selection: $item"
+                ;;
+
+        esac
+
+        item="$(printf '%s' "$item" | tr '[:upper:]' '[:lower:]')"
+
+        if ! valid_profile "$item"; then
+            die "Unknown profile: $item"
+        fi
+
+        exists=0
+
+        for selected in "${SELECTED_PROFILES[@]}"; do
+
+            if [ "$selected" = "$item" ]; then
+                exists=1
+                break
+            fi
+
+        done
+
+        if [ "$exists" -eq 0 ]; then
+            SELECTED_PROFILES+=("$item")
+        fi
+
+    done
+
+    if [ "${#SELECTED_PROFILES[@]}" -eq 0 ]; then
+        die "No profiles selected."
+    fi
+}
