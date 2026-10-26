@@ -1,0 +1,202 @@
+[
+  {
+    "id": 1,
+    "name": "nmap",
+    "category": "Recon",
+    "description": "Network mapper and port scanner",
+    "version": "7.95",
+    "command": "nmap -sV -sC {target}",
+    "status": "installed",
+    "icon": "scan"
+  },
+  {
+    "id": 2,
+    "name": "masscan",
+    "category": "Recon",
+    "description": "Fast Internet-scale port scanner",
+    "version": "1.3.2",
+    "command": "masscan -p1-65535 {target} --rate=1000",
+    "status": "installed",
+    "icon": "radar"
+  },
+  {
+    "id": 3,
+    "name": "nikto",
+    "category": "Recon",
+    "description": "Web server vulnerability scanner",
+    "version": "2.5.0",
+    "command": "nikto -h {target}",
+    "status": "installed",
+    "icon": "globe"
+  },
+  {
+    "id": 4,
+    "name": "theHarvester",
+    "category": "Recon",
+    "description": "OSINT email and subdomain harvester",
+    "version": "2.2.9",
+    "command": "theHarvester -d {domain} -b all",
+    "status": "installed",
+    "icon": "mail"
+  },
+  {
+    "id": 5,
+    "name": "recon-ng",
+    "category": "Recon",
+    "description": "Full-featured recon framework",
+    "version": "5.1.2",
+    "command": "recon-ng",
+    "status": "not-installed",
+    "icon": "search"
+  },
+  {
+    "id": 6,
+    "name": "metasploit",
+    "category": "Exploitation",
+    "description": "Exploitation framework with 2000+ modules",
+    "version": "6.4.30",
+    "command": "msfconsole",
+    "status": "installed",
+    "icon": "exploit"
+  },
+  {
+    "id": 7,
+    "name": "sqlmap",
+    "category": "Exploitation",
+    "description": "Automatic SQL injection tool",
+    "version": "1.8.10",
+    "command": "sqlmap -u {url} --batch",
+    "status": "installed",
+    "icon": "database"
+  },
+  {
+    "id": 8,
+    "name": "burpsuite",
+    "category": "Exploitation",
+    "description": "Web application security testing proxy",
+    "version": "2024.12",
+    "command": "burpsuite",
+    "status": "installed",
+    "icon": "proxy"
+  },
+  {
+    "id": 9,
+    "name": "hydra",
+    "category": "Exploitation",
+    "description": "Fast network logon cracker",
+    "version": "9.5",
+    "command": "hydra -L users.txt -P pass.txt {target} ssh",
+    "status": "installed",
+    "icon": "key"
+  },
+  {
+    "id": 10,
+    "name": "john",
+    "category": "Exploitation",
+    "description": "Password strength testing tool",
+    "version": "1.9.0",
+    "command": "john --wordlist=rockyou.txt {hashfile}",
+    "status": "installed",
+    "icon": "lock"
+  },
+  {
+    "id": 11,
+    "name": "aircrack-ng",
+    "category": "Wireless",
+    "description": "WiFi security auditing suite",
+    "version": "1.7",
+    "command": "aircrack-ng -w wordlist.txt {capfile}",
+    "status": "installed",
+    "icon": "wifi"
+  },
+  {
+    "id": 12,
+    "name": "wifite",
+    "category": "Wireless",
+    "description": "Automated wireless attack tool",
+    "version": "2.7.0",
+    "command": "wifite --kill",
+    "status": "not-installed",
+    "icon": "signal"
+  },
+  {
+    "id": 13,
+    "name": "ettercap",
+    "category": "Wireless",
+    "description": "Man-in-the-middle attack suite",
+    "version": "0.8.3.1",
+    "command": "ettercap -T -M arp /{target}//",
+    "status": "installed",
+    "icon": "network"
+  },
+  {
+    "id": 14,
+    "name": "kismet",
+    "category": "Wireless",
+    "description": "Wireless network detector and sniffer",
+    "version": "2023-07",
+    "command": "kismet",
+    "status": "not-installed",
+    "icon": "antenna"
+  },
+  {
+    "id": 15,
+    "name": "wireshark",
+    "category": "Forensics",
+    "description": "Network protocol analyzer",
+    "version": "4.4.3",
+    "command": "tshark -i eth0",
+    "status": "installed",
+    "icon": "packet"
+  },
+  {
+    "id": 16,
+    "name": "volatility",
+    "category": "Forensics",
+    "description": "Memory forensics framework",
+    "version": "3.0",
+    "command": "vol -f {memdump} windows.info",
+    "status": "installed",
+    "icon": "memory"
+  },
+  {
+    "id": 17,
+    "name": "sleuthkit",
+    "category": "Forensics",
+    "description": "Digital forensic toolkit for disk analysis",
+    "version": "4.12.1",
+    "command": "fls -r {image}",
+    "status": "installed",
+    "icon": "disk"
+  },
+  {
+    "id": 18,
+    "name": "ghidra",
+    "category": "Reverse Engineering",
+    "description": "Software reverse engineering suite by NSA",
+    "version": "11.2.1",
+    "command": "ghidra",
+    "status": "installed",
+    "icon": "binary"
+  },
+  {
+    "id": 19,
+    "name": "radare2",
+    "category": "Reverse Engineering",
+    "description": "Portable reverse engineering framework",
+    "version": "5.9.0",
+    "command": "r2 -A {binary}",
+    "status": "installed",
+    "icon": "hex"
+  },
+  {
+    "id": 20,
+    "name": "binwalk",
+    "category": "Reverse Engineering",
+    "description": "Firmware analysis and extraction tool",
+    "version": "2.4.3",
+    "command": "binwalk -e {firmware}",
+    "status": "installed",
+    "icon": "chip"
+  }
+]

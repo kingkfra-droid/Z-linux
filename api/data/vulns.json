@@ -1,0 +1,66 @@
+[
+  {
+    "id": 1,
+    "target_id": 1,
+    "cve": "CVE-2011-2523",
+    "severity": "critical",
+    "description": "vsftpd 2.3.4 backdoor command execution",
+    "status": "confirmed"
+  },
+  {
+    "id": 2,
+    "target_id": 1,
+    "cve": "CVE-2007-2447",
+    "severity": "critical",
+    "description": "Samba 3.0.20 username map script command injection",
+    "status": "confirmed"
+  },
+  {
+    "id": 3,
+    "target_id": 1,
+    "cve": "CVE-2009-3555",
+    "severity": "high",
+    "description": "Apache SSL/TLS renegotiation DoS",
+    "status": "confirmed"
+  },
+  {
+    "id": 4,
+    "target_id": 1,
+    "cve": "CVE-2016-9838",
+    "severity": "high",
+    "description": "PostgreSQL format string vulnerability",
+    "status": "potential"
+  },
+  {
+    "id": 5,
+    "target_id": 2,
+    "cve": "CVE-2020-0796",
+    "severity": "critical",
+    "description": "SMBv3 compression RCE (SMBGhost)",
+    "status": "confirmed"
+  },
+  {
+    "id": 6,
+    "target_id": 2,
+    "cve": "CVE-2019-0708",
+    "severity": "critical",
+    "description": "BlueKeep RDP remote code execution",
+    "status": "confirmed"
+  },
+  {
+    "id": 7,
+    "target_id": 2,
+    "cve": "CVE-2020-1350",
+    "severity": "high",
+    "description": "DNS SIG IS RCE via crafted SIG record",
+    "status": "potential"
+  },
+  {
+    "id": 8,
+    "target_id": 4,
+    "cve": "CVE-2017-8225",
+    "severity": "high",
+    "description": "Boa HTTPd authentication bypass",
+    "status": "confirmed"
+  }
+]

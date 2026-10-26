@@ -1,0 +1,38 @@
+[
+  {
+    "id": 1,
+    "name": "Metasploitable VM",
+    "ip": "10.10.10.5",
+    "scope": "10.10.10.0/24",
+    "status": "scanning",
+    "os": "Linux 2.6 (Ubuntu)",
+    "createdAt": "2026-10-17T09:00:00Z"
+  },
+  {
+    "id": 2,
+    "name": "Internal Web Server",
+    "ip": "192.168.1.100",
+    "scope": "192.168.1.0/24",
+    "status": "complete",
+    "os": "Windows Server 2019",
+    "createdAt": "2026-10-17T08:30:00Z"
+  },
+  {
+    "id": 3,
+    "name": "Edge Router",
+    "ip": "172.16.0.50",
+    "scope": "172.16.0.0/16",
+    "status": "idle",
+    "os": "Cisco IOS 15.x",
+    "createdAt": "2026-10-17T10:00:00Z"
+  },
+  {
+    "id": 4,
+    "name": "IoT Camera",
+    "ip": "10.10.10.20",
+    "scope": "10.10.10.0/24",
+    "status": "scanning",
+    "os": "Embedded Linux",
+    "createdAt": "2026-10-17T11:00:00Z"
+  }
+]

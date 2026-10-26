@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e
+set -euo pipefail
 
 echo "========================================"
 echo "        Z-Linux Boot Configuration"
@@ -8,7 +8,7 @@ echo "========================================"
 echo
 
 # Check if running as root
-if [ "$EUID" -ne 0 ]; then
+if [ "${EUID:-$(id -u)}" -ne 0 ]; then
     echo "[ERROR] This script must run as root."
     exit 1
 fi
@@ -27,13 +27,15 @@ echo "[+] Boot device: $BOOT_DEVICE"
 
 # Install GRUB bootloader
 echo "[*] Installing GRUB bootloader..."
-GRUB_DEVICE=$(echo $BOOT_DEVICE | sed 's/[0-9]*$//')
+# Strip trailing digits (no external sed required)
+GRUB_DEVICE="${BOOT_DEVICE%%[0-9]*}"
 
 if command -v grub-install >/dev/null 2>&1; then
     grub-install "$GRUB_DEVICE"
     echo "[+] GRUB installed successfully"
 else
     echo "[!] grub-install not found. Installing..."
+    export DEBIAN_FRONTEND=noninteractive
     apt-get update
     apt-get install -y grub-pc
     grub-install "$GRUB_DEVICE"

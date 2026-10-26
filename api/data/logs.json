@@ -1,0 +1,82 @@
+[
+  {
+    "id": 9,
+    "target_id": 4,
+    "tool_id": 2,
+    "message": "Rate: 1000 packets/s, 0:01:23 elapsed",
+    "level": "info",
+    "timestamp": "2026-10-17T11:01:28Z"
+  },
+  {
+    "id": 8,
+    "target_id": 4,
+    "tool_id": 2,
+    "message": "Masscan started on 10.10.10.20 (ports 1-65535)",
+    "level": "info",
+    "timestamp": "2026-10-17T11:00:05Z"
+  },
+  {
+    "id": 5,
+    "target_id": 1,
+    "tool_id": 1,
+    "message": "Vulnerability detected: CVE-2007-2447 (Samba RCE)",
+    "level": "error",
+    "timestamp": "2026-10-17T09:00:35Z"
+  },
+  {
+    "id": 4,
+    "target_id": 1,
+    "tool_id": 1,
+    "message": "Discovered open port 445/tcp (smb) - Samba 3.0.20",
+    "level": "warning",
+    "timestamp": "2026-10-17T09:00:20Z"
+  },
+  {
+    "id": 3,
+    "target_id": 1,
+    "tool_id": 1,
+    "message": "Discovered open port 22/tcp (ssh)",
+    "level": "info",
+    "timestamp": "2026-10-17T09:00:16Z"
+  },
+  {
+    "id": 2,
+    "target_id": 1,
+    "tool_id": 1,
+    "message": "Discovered open port 21/tcp (ftp)",
+    "level": "info",
+    "timestamp": "2026-10-17T09:00:15Z"
+  },
+  {
+    "id": 1,
+    "target_id": 1,
+    "tool_id": 1,
+    "message": "Starting nmap scan on 10.10.10.5",
+    "level": "info",
+    "timestamp": "2026-10-17T09:00:01Z"
+  },
+  {
+    "id": 7,
+    "target_id": 2,
+    "tool_id": 3,
+    "message": "Server may leak information via headers: X-Powered-By",
+    "level": "warning",
+    "timestamp": "2026-10-17T08:35:10Z"
+  },
+  {
+    "id": 6,
+    "target_id": 2,
+    "tool_id": 3,
+    "message": "Nikto scan complete on 192.168.1.100",
+    "level": "info",
+    "timestamp": "2026-10-17T08:35:00Z"
+  },
+  {
+    "target_id": null,
+    "tool_id": 6,
+    "message": "Payload generated: Test Shell Payload",
+    "level": "info",
+    "timestamp": "2026-10-17T12:25:48.784Z",
+    "id": 22
+  }
+]

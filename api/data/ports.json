@@ -1,0 +1,146 @@
+[
+  {
+    "id": 1,
+    "target_id": 1,
+    "port": 21,
+    "service": "ftp",
+    "state": "open",
+    "version": "vsftpd 2.3.4"
+  },
+  {
+    "id": 2,
+    "target_id": 1,
+    "port": 22,
+    "service": "ssh",
+    "state": "open",
+    "version": "OpenSSH 4.7p1"
+  },
+  {
+    "id": 3,
+    "target_id": 1,
+    "port": 23,
+    "service": "telnet",
+    "state": "open",
+    "version": "Linux telnetd"
+  },
+  {
+    "id": 4,
+    "target_id": 1,
+    "port": 80,
+    "service": "http",
+    "state": "open",
+    "version": "Apache 2.2.4"
+  },
+  {
+    "id": 5,
+    "target_id": 1,
+    "port": 445,
+    "service": "smb",
+    "state": "open",
+    "version": "Samba 3.0.20"
+  },
+  {
+    "id": 6,
+    "target_id": 1,
+    "port": 5432,
+    "service": "postgresql",
+    "state": "open",
+    "version": "PostgreSQL 8.3.0"
+  },
+  {
+    "id": 7,
+    "target_id": 1,
+    "port": 5900,
+    "service": "vnc",
+    "state": "open",
+    "version": "VNC 3.3"
+  },
+  {
+    "id": 8,
+    "target_id": 1,
+    "port": 8181,
+    "service": "http",
+    "state": "filtered",
+    "version": "Tomcat 5.5"
+  },
+  {
+    "id": 9,
+    "target_id": 2,
+    "port": 80,
+    "service": "http",
+    "state": "open",
+    "version": "IIS 10.0"
+  },
+  {
+    "id": 10,
+    "target_id": 2,
+    "port": 443,
+    "service": "https",
+    "state": "open",
+    "version": "IIS 10.0"
+  },
+  {
+    "id": 11,
+    "target_id": 2,
+    "port": 3389,
+    "service": "rdp",
+    "state": "open",
+    "version": "Microsoft Terminal Services"
+  },
+  {
+    "id": 12,
+    "target_id": 2,
+    "port": 445,
+    "service": "smb",
+    "state": "open",
+    "version": "Windows SMB"
+  },
+  {
+    "id": 13,
+    "target_id": 2,
+    "port": 1433,
+    "service": "mssql",
+    "state": "filtered",
+    "version": "MS SQL Server 2019"
+  },
+  {
+    "id": 14,
+    "target_id": 3,
+    "port": 22,
+    "service": "ssh",
+    "state": "open",
+    "version": "Cisco SSH"
+  },
+  {
+    "id": 15,
+    "target_id": 3,
+    "port": 80,
+    "service": "http",
+    "state": "open",
+    "version": "Cisco HTTP Server"
+  },
+  {
+    "id": 16,
+    "target_id": 3,
+    "port": 161,
+    "service": "snmp",
+    "state": "open",
+    "version": "SNMP v1/v2c"
+  },
+  {
+    "id": 17,
+    "target_id": 4,
+    "port": 80,
+    "service": "http",
+    "state": "open",
+    "version": "Boa HTTPd 0.94"
+  },
+  {
+    "id": 18,
+    "target_id": 4,
+    "port": 554,
+    "service": "rtsp",
+    "state": "open",
+    "version": "RTSP 1.0"
+  }
+]
